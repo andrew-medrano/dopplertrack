@@ -1,0 +1,57 @@
+# Changelog
+
+## 0.3.0 (2026-11-04)
+
+The search no longer needs a box. One day of flights over a continent is
+indexed once; flight pairs are joined on the geometry of the two events, ground
+points are laid only in each pair's lens, and the same exact CPA gates, silence
+filter and locked scorer rank them. Validated on both ground truths over the
+whole continental US: Oyster Bay ranks the true pair 1 of 9,669 (32 m); the
+eagle cam needs its further detected flyovers (`--extra`) and then ranks 1 of
+13,298 (627 m). See docs/experiments.md.
+
+**Breaking: the CLI is six commands.**
+
+| before | now |
+|---|---|
+| `fetch-day DATE traces.npz --bbox …`, `extract-region DIR traces.npz --bbox …`, `index-day traces.npz day.npz` | `fetch DATE day.npz [--bbox …] [--archive DIR] [--traces traces.npz]`, which writes the day index directly |
+| `search … --traces traces.npz --bbox …` (200 m grid over a box) | `search … --day day.npz [--bbox …]` (the join; `--bbox` restricts it) |
+| `search … --point LAT LON` | `search … --day day.npz --point LAT LON` |
+| `search-wide … --index day.npz` | `search … --day day.npz` |
+| `search-single … --event EV --utc T` | `search … --events EV --utc T` |
+| `refine … --traces traces.npz --bbox …` | `refine … --day day.npz` |
+
+**Breaking: the library.** `dopplertrack.wide` is merged into
+`dopplertrack.search` (`DayIndex`, `pair_join`, `single_join`, `lens_candidates`,
+`score_candidates`, `run_search`, `rescore_with_extra`, `pick_flight`). The grid
+search (`cpa_table`, `pair_candidates`, the CPA cache, `Grid.points`) and
+`pipeline.run_search`, `run_single_search`, `extract_region`, `fetch_region`,
+`segments_for_search`, `relocate_row` are gone; `pipeline.fetch` builds a day
+index, `pipeline.refine` takes one. `build_segments` lost `clip_enu`. Result
+CSVs carry `seg1`/`seg2` into the index they were made from, and `refine` checks
+them against it.
+
+Also:
+
+- The locked scorer samples the spectrogram window along time once per event
+  and walks the sweep in small chunks: twice as fast on one core, eleven times
+  on sixteen (it was memory-bandwidth-bound in a process pool).
+- The lens stage computes exact CPA with a KD-tree nearest-sample query instead
+  of a dense distance matrix (12 min → 71 s for a CONUS day).
+- `load_traces` reads the metadata member once (371 s → 5 s on 35k traces).
+- Terrain tiles are written atomically and re-fetched if corrupt, so a process
+  pool can share the cache.
+- One BLAS thread per process is set before numpy loads in the CLI.
+
+## 0.2.0 (2026-11-03)
+
+- Coverage-weighted scoring: brightness summed over the whole measured window,
+  so a flight that leaves the data mid-pass is not judged on its bright half.
+- `refine --extra`: further detected flyovers scored on the same clock.
+- `detect`: automatic Doppler event detection over a whole recording.
+- `fetch-day`: stream an adsb.lol day archive from GitHub without storing it.
+- Eagle-cam validation (second ground truth).
+
+## 0.1.0 (2026-11-03)
+
+- Spectrogram, curve fit, regional grid search, refine; Oyster Bay result.
