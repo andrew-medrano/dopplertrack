@@ -50,6 +50,7 @@ def main(argv=None):
     d.add_argument("spec"); d.add_argument("--band", nargs=2, type=float, required=True, metavar=("FLO", "FHI"))
     d.add_argument("--harmonics", type=int, default=1); d.add_argument("--top", type=int, default=20)
     d.add_argument("--window", type=float, default=240.0); d.add_argument("--out", help="write ranked fits as a JSON list")
+    d.add_argument("--max-burst", type=float, help="drop events whose surroundings are mostly broadband burst (a passing train or truck sweeps like an aircraft); e.g. 0.15")
 
     f = sub.add_parser("fit", help="fit an ideal Doppler curve inside a time/frequency window")
     f.add_argument("spec"); f.add_argument("--window", nargs=2, type=float, required=True, metavar=("T0", "T1"))
@@ -118,9 +119,11 @@ def main(argv=None):
         evs = detect_events(sp, a.band[0], a.band[1], harmonics=a.harmonics, top=a.top, window_s=a.window,
                             progress=lambda k, n: print(f"\r  window {k}/{n}", end="", flush=True))
         print()
-        print(f"{'rank':>4} {'t_cpa s':>9} {'f0 Hz':>7} {'v m/s':>6} {'d m':>7} {'score':>6}")
+        if a.max_burst is not None:
+            evs = [e for e in evs if e.burst <= a.max_burst]
+        print(f"{'rank':>4} {'t_cpa s':>9} {'f0 Hz':>7} {'v m/s':>6} {'d m':>7} {'score':>6} {'burst':>5}")
         for i, e in enumerate(evs):
-            print(f"{i + 1:>4} {e.t_cpa:>9.1f} {e.f0:>7.1f} {e.v:>6.0f} {e.d:>7.0f} {e.score:>6.2f}")
+            print(f"{i + 1:>4} {e.t_cpa:>9.1f} {e.f0:>7.1f} {e.v:>6.0f} {e.d:>7.0f} {e.score:>6.2f} {e.burst:>5.2f}")
         if a.out:
             with open(a.out, "w") as fh:
                 json.dump([e.to_dict() for e in evs], fh, indent=1)

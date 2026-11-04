@@ -11,6 +11,13 @@
   150 km from the answer is no match. Those tables are now under docs/results
   and tests/test_verdict.py checks them.
 
+- `detect` flags events that coincide with a broadband burst (`burst`: the
+  fraction of the 3 min around the CPA in which the whole band is loud at
+  once, three robust sigmas above its median level). On a railcam recording
+  every top detection was a locomotive passing the camera, whose engine tone
+  sweeps like a low-altitude flyover and arrives with the rumble.
+  `--max-burst` drops them.
+
 ## 0.3.0 (2026-11-04)
 
 The search no longer needs a box. One day of flights over a continent is
