@@ -1,5 +1,7 @@
 # dopplertrack
 
+![An hour of outdoor recording: three propeller aircraft, none audible, each matched by the Doppler curve its real ADS-B track predicts at the true location](docs/results/header.png)
+
 Acoustic geolocation from the Doppler curves of propeller aircraft.
 
 Any outdoor (and many indoor) recordings contain faint, usually inaudible
