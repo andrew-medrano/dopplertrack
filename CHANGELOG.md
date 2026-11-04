@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- `dopplertrack.verdict`: the winner of a search is judged against the wrong
+  pairs the same search scored (an exponential upper tail fitted on the best
+  wrong pairs; p is the chance a wrong winner would lead the next wrong pair by
+  the observed gap). `search` prints it after the top table: located, ambiguous,
+  no match, or insufficient. On the saved results two events alone are always
+  ambiguous, the extra flyovers make both recordings located, and the box moved
+  150 km from the answer is no match. Those tables are now under docs/results
+  and tests/test_verdict.py checks them.
+
 ## 0.3.0 (2026-11-04)
 
 The search no longer needs a box. One day of flights over a continent is

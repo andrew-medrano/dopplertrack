@@ -17,6 +17,7 @@ from . import pipeline
 from .audio import Spectrogram
 from .search import DayIndex, rescore_with_extra, run_search
 from .terrain import Terrain
+from .verdict import verdict
 from .tracks import EventFit
 
 BBOX = dict(nargs=4, type=float, metavar=("LATMIN", "LATMAX", "LONMIN", "LONMAX"))
@@ -147,6 +148,8 @@ def main(argv=None):
                          t_heard_unix=parse_utc(a.utc) if a.utc else None)
         res.to_csv(a.out, index=False)
         pipeline.log(f"wrote {a.out}")
+        print(pipeline.best_per_pair(res).head(a.top).to_string())
+        print(verdict(res))
         if a.extra:
             extra = [load_event(p) for p in a.extra]
             xh = list(a.extra_harmonics) + [1] * (len(extra) - len(a.extra_harmonics))
@@ -155,7 +158,8 @@ def main(argv=None):
             out = a.out_extra or (a.out[:-4] + "_extra.csv" if a.out.endswith(".csv") else a.out + "_extra.csv")
             res.to_csv(out, index=False)
             pipeline.log(f"wrote {out}")
-        print(pipeline.best_per_pair(res).head(a.top).to_string())
+            print(pipeline.best_per_pair(res).head(a.top).to_string())
+            print(verdict(res))
     elif a.cmd == "refine":
         import pandas as pd
         sp = Spectrogram.load(a.spec)

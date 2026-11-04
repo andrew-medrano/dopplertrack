@@ -33,13 +33,19 @@ propeller flight over the continental US that day, with no region given.
 | rank with further detected flyovers (`--extra`) | 1 | **1** |
 | best point from the truth | 32 m | 627 m |
 | margin over the runner-up | 24 % | 13 % |
+| verdict (p) | located (0.001) | located (0.06) |
+| verdict from the two events alone | ambiguous (0.23) | ambiguous (0.48) |
 | wall time, 16 threads, after the index | 18 min | 6 min |
 
 Two flyovers locate a recording when at least one passed low and to the side;
 two high, nearly overhead passes leave a plateau a few kilometres wide and a
 continent full of pairs that fit, which is what the extra flyovers are for.
 A margin is not a confidence: a box that does not contain the answer still
-returns a winner. The experiments behind these numbers, the regional
+returns a winner. So every search ends with a verdict: the winner is judged
+against the thousands of wrong pairs the same search scored on the same
+audio, and p is the chance a wrong winner would lead the next wrong pair by
+that much. The audio searched in a box 150 km from the answer gets
+"no match" (p = 0.88). The experiments behind these numbers, the regional
 searches that came first, and the failures along the way are in
 [docs/experiments.md](docs/experiments.md).
 
@@ -102,6 +108,10 @@ uv run dopplertrack refine rec.npz results.csv --events ev1.json ev2.json --day 
    flight at the pair's best point and scored at all of its points with that
    point's shift, so every event is on one clock. `refine` does the same on
    a fine grid.
+5. **Verdict.** At most one scored pair is right; the rest are the null
+   distribution for this recording. The upper tail of their scores is fitted
+   as exponential, and the gap between the winner and the best other pair is
+   tested against it: located (p < 0.1), ambiguous (p < 0.5), or no match.
 
 The ideal-curve fits only seed the gates (`--v-tol`, `--d-tol`; open them
 for a faint or turning pass); ranking uses real trajectories throughout.

@@ -60,8 +60,9 @@ spectrogram is busy. Tables:
 flight pairs, the best 152 km from the truth with a 1.5 % margin, and nothing
 in the output says it is wrong (found by SokolskyNikita in
 [issue #4](https://github.com/mjshiggins/dopplertrack/issues/4), reproduced
-here). The nationwide search removes the box but not the problem; a verdict
-with an abstention is future work.
+here; [`results/oyster_bay_moved_box_best_per_pair.csv`](results/oyster_bay_moved_box_best_per_pair.csv)).
+The nationwide search removes the box but not the problem; the verdict
+below is the answer to it.
 
 **Automatic event detection.** The two windows above were chosen by eye, as
 in the video. `detect` over the whole hour with no hints returns the same two
@@ -261,3 +262,40 @@ twice as fast on one core and eleven times faster on 16. The lens stage had
 the same disease (a dense point-by-track distance matrix per pair) and the
 same cure: a KD-tree nearest-sample query gives the identical CPA with no
 large temporaries, and 12 minutes became 71 seconds.
+
+## Confidence from the null
+
+Every search scores thousands of flight pairs, at most one of which is right.
+The others are wrong by construction (real aircraft, real geometry that
+passed the gates) and were scored against the same audio, so their scores
+are what a wrong pair looks like on this recording: the null distribution,
+produced for free, and the larger the search the better it is known. The
+winner is judged against that crowd instead of against the runner-up alone.
+
+The model (`dopplertrack.verdict`): pairs sharing a flight with the winner
+are left out, since they carry part of its signal; the upper tail of the rest
+is taken as exponential above the k-th best score (k is 5 % of the wrong
+pairs, between 15 and 100), with its mean excess m fitted there; the spacing
+between the two largest values of such a tail is itself exponential with mean
+m, so the chance that a wrong winner would lead the best other wrong pair by
+the observed gap is p = exp(−gap / m). Located below 0.1, ambiguous below
+0.5, no match above.
+
+| search | winner | gap / tail width | p | verdict |
+|---|---|---|---|---|
+| Oyster Bay, nationwide, two events | true pair, 32 m | 1.65 / 1.11 | 0.23 | ambiguous |
+| Oyster Bay, nationwide, + faint flyover | true pair, 32 m | 6.92 / 0.75 | 0.0001 | located |
+| eagle cam, nationwide, two events | wrong pair, 203 km | 0.19 / 0.26 | 0.48 | ambiguous |
+| eagle cam, nationwide, + three flyovers | true pair, 627 m | 2.53 / 0.92 | 0.064 | located |
+| Oyster Bay, regional box, two events | true pair, 123 m | 1.28 / 1.55 | 0.44 | ambiguous |
+| eagle cam, regional box, two events | true pair, 917 m | 0.25 / 0.31 | 0.44 | ambiguous |
+| Oyster Bay, box moved 150 km north | wrong pair, 152 km | 0.32 / 2.59 | 0.88 | no match |
+
+Read across the rows: two events never prove a location, even when they
+find it. The 6.2 % margin at Oyster Bay is a gap of 1.5 tail widths, which a
+wrong winner leads by one time in four; the eagle cam's two events, which
+in fact picked the wrong pair, look the same. The extra flyovers are what
+turn a right answer into a provable one, and the moved box, which has no
+right answer, is the only case the test rejects outright. These seven tables
+are the beginning of the benchmark: `tests/test_verdict.py` checks each
+verdict against the saved best-per-pair tables.
