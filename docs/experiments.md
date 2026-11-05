@@ -299,3 +299,105 @@ turn a right answer into a provable one, and the moved box, which has no
 right answer, is the only case the test rejects outright. These seven tables
 are the beginning of the benchmark: `tests/test_verdict.py` checks each
 verdict against the saved best-per-pair tables.
+
+## A third recording: a railcam in Atlanta
+
+The two recordings above were both made by someone standing outdoors with the
+aircraft in mind. The third was not: Railstream's Howell Wye camera at the BI
+Tower junction in Atlanta (YouTube `OH5baHg7pIw`, 11.9 h overnight from
+2026-05-28 00:42 UTC, 49 kbps audio), chosen because the camera's position is
+known to about 100 m and the ADS-B day is in the archive. A first choice, the
+Berea, Ohio camera of 2026-01-26, had to be dropped: 6.9 h of a daytime
+snowstorm with one propeller pass within 15 km, and every top detection a
+locomotive passing the camera, whose engine tone (190–210 Hz) sweeps like a
+140 m/s flyover at 300 m and arrives with a broadband rumble. That is what
+the `burst` column of `detect` is for.
+
+**Detection.** 42 propeller passes within 15 km during the stream, 12 of them
+within 6 km and below 3 km AGL. Six of `detect`'s top forty are real: ranks
+1, 5, 8, 11, 12 and 29 (a07f4d 1.3 km, ab92a2 1.7 km, a1902a 1.8 km, a26439
+3.6 km, a6937e 1.8 km, a798b9 6.0 km). Ranks 2, 3 and 4 are not aircraft. A
+low, slow aircraft that circled the junction three times at 215 m AGL (aa202a)
+was never detected.
+
+**The clock.** Lining the six up with the ADS-B passes gives offsets of +50 s
+before 15,400 s of stream and −57 s after 30,600 s: the archived stream lost
+about 107 s somewhere in between. A two-event search only needs the interval
+between its two events, so a pair on one side of the gap is unaffected, but
+any event on the other side is on a different clock, and the extra-flyover
+rescoring, which puts every event on the clock of the pair, matches those
+to no flight or to the wrong one. Long public streams drop out; the method
+has to expect it.
+
+**The blind protocol.** Every pair of the top five detections as the two
+events (earlier first), the other burst-free detections among the top twelve
+as extras, one nationwide search per pair with the silence filter off, since
+on a 12-hour recording of a busy approach corridor two detected flyovers are
+rarely consecutive (an undetected 3.9 km pass sits between ranks 1 and 5 and
+would have vetoed the truth). Ten searches, about 15 minutes each.
+
+| pair (detect ranks) | truth | pairs scored | two events | with extras |
+|---|---|---|---|---|
+| 1 + 5 | both real | 36,260 | **true pair rank 6, 361 m**; winner a Scottsdale pair, located (p = 0.08) | true pair rank 68; ambiguous (0.41) |
+| 2 + 4 | neither | 54,843 | ambiguous (0.41) | wrong pair located (p = 0.006) |
+| 1 + 4, 2 + 5, 3 + 1, 3 + 4, 4 + 5 | one or none | 9,772–85,065 | no match | no match (0.51–0.94), 1 + 4 ambiguous (0.48) |
+| 2 + 1, 3 + 2, 3 + 5 | one or none | 37,298–115,864 | ambiguous (0.25–0.44) | no match (0.64–0.81), 2 + 5 ambiguous (0.28) |
+
+So the one pair of real flyovers finds the camera to within 361 m (460 m on
+a 50 m grid) in sixth place out of 36,260 pairs over the continent, and
+loses to a pair in Scottsdale, Arizona with the same geometry: two passes at
+1.5 and 1.3 km at the same speeds, 12.8 against 12.0. The extras, meant to
+settle that, were on the wrong clock and buried it instead.
+
+**The verdict under test.** Eighteen of the twenty verdicts came from
+searches with no right answer among the scored pairs. Two of them said
+located, at p = 0.08 and p = 0.006. One in ten is what a threshold of 0.1
+promises, and the first is within it; the second, with extras, is not: the
+null there is only the 200 rescored pairs, and nine extras each matched to
+the best flight near each point inflate a wrong pair as readily as the right
+one. "Located" at p < 0.1 is therefore a weak claim, and the extras need a
+clock of their own. The tables are saved as `howell_wye_*` and the two false
+positives are expected failures in `tests/test_verdict.py`.
+
+**On one clock.** The three other real detections (ranks 8, 11, 12) are all
+before the gap, so their three pairs are a fair test of the search with the
+clock intact, with the four non-aircraft detections from the same side of the
+gap as extras:
+
+| pair | truth | pairs scored | two events | with four wrong extras |
+|---|---|---|---|---|
+| 8 + 12 (a1902a, a6937e) | 366 m, rank 16 of 166,583 | ambiguous (0.19) | rank 116 |
+| 12 + 11 (a6937e, a26439) | 438 m, rank 12 of 38,878 | no match (0.85) | rank 81 |
+| 8 + 11 (a1902a, a26439) | 173 m, rank 32 of 37,028 | ambiguous (0.23) | rank 83 |
+
+Every pair of real flyovers puts the camera within 440 m and in the top 32 of
+tens of thousands of pairs, and none of them wins. Extras that are not
+aircraft push the right pair down every time: each is matched to the
+brightest flight near every candidate point, and the busier the airspace
+around a wrong point, the more that selection is worth. Extras help only
+when they are real: refined with the one real extra on the same clock, the
+8 + 12 pair's true point scores 18.9 against the winner's 17.3 and the
+12 + 11 pair's 19.0 against a winner with no flight to match at all. On the
+two earlier recordings the extras were real, which is why they looked so
+decisive; `detect` alone cannot promise that.
+
+![Events 1 and 5 with the curves predicted at the true location and at the winner's](results/howell_wye_curves.png)
+
+**Why the truth loses.** The figure shows the two events of the blind pair
+with the curve each candidate predicts. At the true location the curve
+predicted from a07f4d's ADS-B track has a kink before the closest approach
+that the audio does not have: the recorded tone sweeps smoothly from 325 to
+210 Hz while the modelled one dips and recovers, which is what a glitch or a
+gap in the position reports does to a radial velocity taken from
+differentiated positions. The Scottsdale pair's smooth track fits the audio
+better there (7.5 against 7.0 on event 1) and the margin is the whole
+difference. The second thing the figure shows is that the recording holds
+three or four harmonics of the same propeller, in fixed ratios, and the
+search scores one curve. A wrong pair has to fit one line; it would have to
+fit the comb.
+
+What this recording adds to the roadmap: smooth the trajectories before
+taking radial velocities (or take them from the reported ground speed and
+track); score the harmonic comb, not one curve; give each extra event its
+own clock offset, and weigh it by how many flights it had to choose from;
+and treat "located" at p < 0.1 as the weak claim it is.

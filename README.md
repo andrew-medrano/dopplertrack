@@ -37,6 +37,14 @@ propeller flight over the continental US that day, with no region given.
 | verdict from the two events alone | ambiguous (0.23) | ambiguous (0.48) |
 | wall time, 16 threads, after the index | 18 min | 6 min |
 
+A third recording, 12 hours from a railway camera in Atlanta searched the
+same way, is a negative: every pair of real flyovers puts the camera within
+440 m and in the top 6–32 of tens of thousands of pairs, and none wins,
+because the modelled curve of the true track has a kink the audio lacks and
+a smoother track elsewhere fits better. Its archived stream had also lost
+107 s in the middle, which put the extra flyovers on a different clock. The
+details and what they add to the roadmap are in the experiments page.
+
 Two flyovers locate a recording when at least one passed low and to the side;
 two high, nearly overhead passes leave a plateau a few kilometres wide and a
 continent full of pairs that fit, which is what the extra flyovers are for.
@@ -45,7 +53,8 @@ returns a winner. So every search ends with a verdict: the winner is judged
 against the thousands of wrong pairs the same search scored on the same
 audio, and p is the chance a wrong winner would lead the next wrong pair by
 that much. The audio searched in a box 150 km from the answer gets
-"no match" (p = 0.88). The experiments behind these numbers, the regional
+"no match" (p = 0.88); of twenty searches of the railcam audio with no right
+answer among the pairs, two were called located, so p < 0.1 is a weak claim. The experiments behind these numbers, the regional
 searches that came first, and the failures along the way are in
 [docs/experiments.md](docs/experiments.md).
 

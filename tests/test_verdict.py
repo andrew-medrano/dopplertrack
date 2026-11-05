@@ -59,6 +59,11 @@ def test_one_point_per_pair_counts_once():
     ("oyster_bay_search_best_per_pair.csv", "ambiguous"),         # regional, two events
     ("swfl_search_best_per_pair.csv", "ambiguous"),
     ("oyster_bay_moved_box_best_per_pair.csv", "no match"),       # the audio searched in a box 150 km north of the answer
+    ("howell_wye_p3_1_best_per_pair.csv", "no match"),            # railcam, a true flyover paired with a non-aircraft detection
+    ("howell_wye_p1_5_extra_best_per_pair.csv", "ambiguous"),     # railcam, the true pair + nine extras on a broken clock
+    # known false positives (docs/experiments.md, Howell Wye): wrong winners the tail test accepts
+    pytest.param("howell_wye_p1_5_best_per_pair.csv", "ambiguous", marks=pytest.mark.xfail(strict=True, reason="wrong pair located at p = 0.08")),
+    pytest.param("howell_wye_p2_4_extra_best_per_pair.csv", "no match", marks=pytest.mark.xfail(strict=True, reason="wrong pair located at p = 0.006")),
 ])
 def test_saved_results(name, expect):
     v = verdict(pd.read_csv(RESULTS / name))

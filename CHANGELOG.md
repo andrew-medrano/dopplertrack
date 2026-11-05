@@ -18,6 +18,14 @@
   sweeps like a low-altitude flyover and arrives with the rumble.
   `--max-burst` drops them.
 
+- A third ground truth, a 12-hour Railstream camera in Atlanta, searched
+  blind: negative. The true pairs rank 6–32 nationwide within 440 m and never
+  win; the archived stream has a 107 s dropout that puts events on two clocks;
+  non-aircraft extras bury the right pair; and two of twenty verdicts with no
+  right answer were "located" (docs/experiments.md). Its tables are in
+  docs/results and the two false positives are expected failures in
+  tests/test_verdict.py.
+
 ## 0.3.0 (2026-11-04)
 
 The search no longer needs a box. One day of flights over a continent is
