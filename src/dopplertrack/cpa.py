@@ -33,6 +33,15 @@ _BLOCK = 1 << 17          # points x chords per block of the chord table, to sta
 
 
 def _chords(ch: Chain):
+    """(P0, D, L2, E) of the chain's chords, computed once per chain: a lens queries the same
+    two chains from several gates."""
+    got = ch.__dict__.get("_chords")
+    if got is None:
+        got = ch.__dict__["_chords"] = _chords_of(ch)
+    return got
+
+
+def _chords_of(ch: Chain):
     P0 = ch.p[:-1]; D = ch.p[1:] - ch.p[:-1]
     h = np.diff(ch.t)
     L2 = np.maximum((D * D).sum(1), 1e-9)

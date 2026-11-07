@@ -72,6 +72,12 @@ once.
   either role, as its docstring says; it compared flight 1 with flight 1 and
   flight 2 with flight 2 only. A one-event search (`--utc`) had an empty null
   and always came out "insufficient"; its null is now the other flights.
+- The lens stage tests the coarse lattice's distance gates on the chords
+  first (within the arc bound of the curve, so nothing is lost) and runs the
+  exact closest approach only on the points in reach of both flights; each
+  chain's chords and arc bounds are computed once. The candidates are the
+  same as before on 4,000-pair samples of three days; the lens took 7-17 %
+  less CPU there.
 - The store's arrays are held as plain ndarray views of their memory maps:
   slicing an `np.memmap` builds a new memmap object each time, which cost
   6 % of the lens stage.

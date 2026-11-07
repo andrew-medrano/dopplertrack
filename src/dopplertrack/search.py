@@ -305,6 +305,7 @@ def _lens_one(row) -> pd.DataFrame | None:
         ch2 = st.chain(seg2, t1a + lo - p.pad_s, t1b + hi + p.pad_s)
         if ch2 is None:
             return None
+    eb = max(arc_bound(ch1), arc_bound(ch2) if ch2 is not None else 0.0)
     if p.points is not None:
         lat, lon, el, G = (np.asarray(x, float) for x in p.points)
     else:
@@ -325,7 +326,14 @@ def _lens_one(row) -> pd.DataFrame | None:
             return None
         _, _, _, G = _ground_lattice(E, N, lat_c, lon_c, None, st.lat0, st.lon0)
         sd = 0.75 * cm; stt = sd * (1.0 / max(p.v1[0] if p.single else min(p.v1[0], p.v2[0]), 10.0) + 1.0 / p.c)
-        ok = _gate(G, ch1, ch2, p, slack_d=sd, slack_t=2 * stt, v_slack=0.1)[0]
+        # the distance gates first on the chords alone, which are within the arc bound eb of the
+        # curve (so nothing the exact gate would pass is lost): much of the lattice is out of
+        # reach of one flight or the other, and the curve step costs three times the chord step
+        near = _gate(G, ch1, ch2, p, exact=False, slack_d=sd + eb, dist_only=True)[0]
+        if not near.any():
+            return None
+        ok = np.zeros(len(G), bool)
+        ok[near] = _gate(G[near], ch1, ch2, p, slack_d=sd, slack_t=2 * stt, v_slack=0.1)[0]
         if not ok.any():
             return None
         # fine lattice around each surviving coarse cell; each fine point first takes its coarse
