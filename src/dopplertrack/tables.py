@@ -17,7 +17,7 @@ from .doppler import ideal_curve
 from .score import F0_SCALES, EventWindow
 
 STEP = 0.015                            # grid step in log(distance) and log(speed): 1.5 %
-DELTAS = np.arange(-16, 16.01, 0.5)     # event-2 offsets: geometry gap error plus event-1 shift, s
+DELTAS = np.arange(-16, 16.01, 0.25)    # event-2 offsets: geometry gap error plus event-1 shift, s
 
 
 @dataclass

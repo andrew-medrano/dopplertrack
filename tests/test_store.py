@@ -56,7 +56,7 @@ def test_build_save_load_round_trip(tmp_path):
     st.save(tmp_path / "s")
     back = TrackStore.load(tmp_path / "s")
     assert back.fingerprint() == st.fingerprint()
-    assert isinstance(back.a["kp"], np.memmap)                      # memory-mapped, not read
+    assert isinstance(back.a["kp"].base, np.memmap)                 # memory-mapped, not read
     for k in ("kt", "kp", "kv", "off", "sb", "ss", "spos", "sspd"):
         assert np.array_equal(np.asarray(back.a[k]), np.asarray(st.a[k])), k
     # a 1 Hz track sampled back from the store matches the input to well under a metre

@@ -16,7 +16,10 @@ from .store import Track
 from .tracks import EventFit, local_whiten, ridge
 
 F0_SCALES = np.arange(0.95, 1.0501, 0.005)   # f0 scales every placement is swept over
-SHIFTS = np.arange(-8, 8.01, 0.5)            # event-1 time shifts, s
+# event-1 time shifts, s. Event 2 is placed with event 1's best shift, so the grid step is also how
+# far event 2 can sit from its best placement: at 0.5 s a 0.1 s change in a candidate's heard CPA
+# time could move event 1's pick by a step and event 2's score by half a point.
+SHIFTS = np.arange(-8, 8.01, 0.25)
 DLOG = 0.001                                 # log-frequency axis step (0.1 % of frequency)
 _PAD = 64                                    # zero margin of the axis, columns (f0 scales up to 6.6 %)
 RIDGE_MIN_DB = 3.0          # ridge frames dimmer than this (whitened dB) carry no evidence

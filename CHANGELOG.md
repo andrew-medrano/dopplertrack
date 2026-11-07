@@ -57,6 +57,17 @@ once.
   reach of each flight: a pair whose flights stay together for an hour costs
   1 s of CPU instead of 22 s with one window for all its points.
 - Terrain tiles are decoded once into memory-mapped float32 `.npy` files.
+- Time shifts are swept every 0.25 s instead of 0.5 s (`score.SHIFTS`,
+  `tables.DELTAS`). Event 2 takes event 1's best shift, so with 0.5 s steps a
+  0.1 s change in a candidate's heard CPA time (the exact closest approach
+  against the chords) could move event 1's pick by a step and event 2's
+  score by half a point. On the railcam that dropped the true pair from 26th
+  to 53rd after the exact stage, just outside the 50 refined pairs; with
+  0.25 s steps it is 33rd there and 4th after refinement. The tables and the
+  exact stage take about 2 s longer per search.
+- The store's arrays are held as plain ndarray views of their memory maps:
+  slicing an `np.memmap` builds a new memmap object each time, which cost
+  6 % of the lens stage.
 - On the synthetic scene of tests/test_search.py the two-stage search puts
   the winner 2 m from the observer; scoring every 200 m candidate put it
   143 m away. On real data (0.3 indexes converted with `store`): Oyster Bay

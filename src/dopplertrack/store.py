@@ -246,7 +246,11 @@ class TrackStore:
         if meta.get("version") != VERSION:
             raise ValueError(f"{d}: track store format version {meta.get('version')}, this dopplertrack reads "
                              f"version {VERSION}; rebuild it with `dopplertrack fetch` or `dopplertrack store`")
-        a = {k: np.load(d / f"{k}.npy", mmap_mode=None if k == "icao" else "r") for k in _ARRAYS}
+        # memory-mapped, but held as plain ndarray views of the maps: slicing an np.memmap builds a
+        # new memmap object each time, which costs more than the read on the many small slices a
+        # search takes
+        a = {k: np.load(d / f"{k}.npy") if k == "icao" else np.asarray(np.load(d / f"{k}.npy", mmap_mode="r"))
+             for k in _ARRAYS}
         st = cls(meta, a, d)
         if (len(a["off"]) - 1, len(a["kt"]), len(a["sb"])) != (meta["segments"], meta["knots"], meta["samples"]):
             raise ValueError(f"{d}: array sizes do not match meta.json; the store is incomplete or damaged, rebuild it")
