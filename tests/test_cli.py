@@ -65,3 +65,9 @@ def test_search_rejects_a_day_index(files):
     with pytest.raises(ValueError, match="dopplertrack store"):
         cli.main(["search", str(files / "rec.npz"), "--events", str(files / "ev1.json"), str(files / "ev2.json"),
                   "--day", str(files / "day.npz"), "--out", str(files / "x.csv"), "--no-dem"])
+
+
+def test_parse_utc_reads_times_without_an_offset_as_utc():
+    assert cli.parse_utc("2026-09-08T20:53:26") == 1788900806.0
+    assert cli.parse_utc("2026-09-08T16:53:26-04:00") == 1788900806.0
+    assert cli.parse_utc("1788900806") == 1788900806.0

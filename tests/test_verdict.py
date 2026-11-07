@@ -40,6 +40,20 @@ def test_pairs_sharing_a_flight_with_the_winner_leave_the_null():
     assert v2.n_null == v.n_null and v2.gap == pytest.approx(v.gap) and v2.verdict == "located"
 
 
+def test_a_flight_shared_in_the_other_role_leaves_the_null_too():
+    rng = np.random.default_rng(4)
+    df = _table(10.0 + rng.exponential(0.5, 2000), winner=16.0, rng=rng)
+    swapped = pd.DataFrame({"icao1": ["b00001"], "icao2": ["ffffff"], "score": [15.9], "lat": [40.0], "lon": [-73.0]})
+    assert verdict(pd.concat([df, swapped])).n_null == verdict(df).n_null
+
+
+def test_one_event_results_are_judged_against_the_other_flights():
+    rng = np.random.default_rng(5)
+    df = _table(10.0 + rng.exponential(0.5, 500), winner=16.0, rng=rng).assign(icao2="")
+    v = verdict(df)
+    assert v.n_null == 500 and v.verdict == "located"
+
+
 def test_too_few_pairs_is_insufficient():
     v = verdict(_table(np.linspace(1, 2, 12), winner=10.0))
     assert v.verdict == "insufficient" and v.n_null == 12

@@ -34,11 +34,13 @@ def load_event(path) -> EventFit:
 
 
 def parse_utc(s: str) -> float:
+    """Unix seconds, or an ISO-8601 time; one without an offset is UTC, not the machine's zone."""
     from datetime import datetime, timezone
     try:
         return float(s)
     except ValueError:
-        return datetime.fromisoformat(s).astimezone(timezone.utc).timestamp()
+        t = datetime.fromisoformat(s)
+        return (t.replace(tzinfo=timezone.utc) if t.tzinfo is None else t).timestamp()
 
 
 def main(argv=None):

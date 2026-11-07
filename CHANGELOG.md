@@ -65,6 +65,13 @@ once.
   to 53rd after the exact stage, just outside the 50 refined pairs; with
   0.25 s steps it is 33rd there and 4th after refinement. The tables and the
   exact stage take about 2 s longer per search.
+- `--utc` reads an ISO-8601 time without an offset as UTC, as its help says;
+  it was read in the machine's time zone (an upstream bug), so on a machine
+  in New York the Oyster Bay flyover's time matched no flight.
+- The verdict leaves out every pair that shares a flight with the winner, in
+  either role, as its docstring says; it compared flight 1 with flight 1 and
+  flight 2 with flight 2 only. A one-event search (`--utc`) had an empty null
+  and always came out "insufficient"; its null is now the other flights.
 - The store's arrays are held as plain ndarray views of their memory maps:
   slicing an `np.memmap` builds a new memmap object each time, which cost
   6 % of the lens stage.

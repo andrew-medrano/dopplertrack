@@ -56,7 +56,10 @@ def verdict(res: pd.DataFrame, k_frac: float = 0.05, k_min: int = 15, k_max: int
         return Verdict("insufficient", float("nan"), float("nan"), float("nan"), float("nan"), 0, 0, 0, {})
     w = b.iloc[0]
     winner = {c: (w[c].item() if hasattr(w[c], "item") else w[c]) for c in b.columns if c in ("icao1", "icao2", "score", "lat", "lon")}
-    null = np.sort(b[(b.icao1 != w.icao1) & (b.icao2 != w.icao2)].score.to_numpy())[::-1]
+    # a one-event search has no second flight (icao2 ""): the null is every other flight
+    mine = {str(x) for x in (w.icao1, w.icao2) if isinstance(x, str) and x}
+    shares = b.icao1.astype(str).isin(mine) | b.icao2.astype(str).isin(mine)
+    null = np.sort(b[~shares].score.to_numpy())[::-1]
     k = int(np.clip(round(k_frac * len(null)), k_min, k_max))
     if len(null) < k + 5:
         return Verdict("insufficient", float("nan"), float("nan"), float("nan"), float("nan"), k, len(b), len(null), winner)
