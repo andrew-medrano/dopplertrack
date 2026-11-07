@@ -1,10 +1,11 @@
 [project]
 name = "dopplertrack"
-version = "0.3.0"
+version = "0.4.0"
 description = "Acoustic geolocation from inaudible aircraft Doppler curves matched against ADS-B flight tracks"
 readme = "README.md"
 authors = [
-    { name = "MacCallister Higgins", email = "maccallister.higgins@gmail.com" }
+    { name = "MacCallister Higgins", email = "maccallister.higgins@gmail.com" },
+    { name = "Andrew Medrano" },
 ]
 license = "MIT"
 license-files = ["LICENSE"]
@@ -28,8 +29,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mjshiggins/dopplertrack"
-Issues = "https://github.com/mjshiggins/dopplertrack/issues"
+Homepage = "https://github.com/andrew-medrano/dopplertrack"
+Issues = "https://github.com/andrew-medrano/dopplertrack/issues"
+Upstream = "https://github.com/mjshiggins/dopplertrack"
 
 [project.scripts]
 dopplertrack = "dopplertrack.cli:main"

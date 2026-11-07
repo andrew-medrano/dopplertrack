@@ -1,15 +1,26 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-11-06)
 
-**Breaking: searches run on a track store, in two stages.** No compatibility
-layer: the 1 Hz day index, its loader and the score-everything search are
-gone; `dopplertrack store` converts an old index once.
+First release of this fork ([andrew-medrano/dopplertrack](https://github.com/andrew-medrano/dopplertrack))
+of [mjshiggins/dopplertrack](https://github.com/mjshiggins/dopplertrack).
+It includes upstream's changes after 0.3.0 (listed at the end of this
+entry). The search runs on a compact track store and scores in two stages,
+with a 50 m refinement. On the Oyster Bay day the store is 646 MB against
+6.2 GB for the 0.3 index, and a nationwide search took 88 s on a loaded M3 Pro
+against 34 minutes for 0.3 on the same machine (swapping; 58 s against
+309 s on the smaller eagle-cam day). docs/fast-search.md has the conditions.
+
+### Breaking: searches run on a track store, in two stages
+
+No compatibility layer: the 1 Hz day index, its loader and the
+score-everything search are gone; `dopplertrack store` converts an old index
+once.
 
 | before | now |
 |---|---|
 | `fetch DATE day.npz` (1 Hz day index, 6.2 GB for a CONUS day) | `fetch DATE DIR` (track store, 646 MB for the same day) |
-| — | `store DAY.npz DIR` converts a 0.3 day index (memory-mapped; 58 s and a 2.8 GB peak for 6.2 GB) |
+| — | `store DAY.npz DIR` converts a 0.3 day index (memory-mapped; 146 s and a 2.8 GB memory peak for the 6.2 GB Oyster Bay day, on a loaded machine) |
 | `search … --day day.npz` scores every candidate | `search … --day DIR`: table scores for every candidate, exact scores for the best 20 points of the best 500 pairs, a 50 m refinement around the best 50 (`--exact-pairs`, `--exact-points`, `--refine-pairs`) |
 | `refine … --day day.npz` | `refine … --day DIR` |
 | — | `verdict RESULTS.csv` |
@@ -52,7 +63,40 @@ gone; `dopplertrack store` converts an old index once.
   ranks the true pair 1 of 500 shortlisted pairs, 26 m from the answer, 8.1 %
   ahead, located (p = 0.09; 0.05 with its extra flyover); the eagle cam
   ranks it 13 of 500 with two events and 1 of 200 with its three extra
-  flyovers (4.9 % ahead, ambiguous, p = 0.42).
+  flyovers (4.9 % ahead, ambiguous, p = 0.42). The railcam's true pair
+  ranks 53 of 499 (the prototype had it 3rd). McMaster Forest, held out, is
+  located 0.76 km from its reference point with the silence filter off and
+  its extras (p = 0.001), as in the prototype; Safari Road is missed.
+- The silence filter skips points it has already removed: on the McMaster
+  day with the filter on, 1,181 s of CPU instead of 2,046 s, same result.
+- Against 0.3 on the same machine, the eagle-cam search is 5.4× faster in
+  wall time (309 s to 58 s) and 5.8× in CPU time; Oyster Bay 23× and 18×,
+  inflated by 0.3 swapping. The verdict is weaker: with the extras the
+  eagle cam is ambiguous (p = 0.42) where 0.3 said located (p = 0.05),
+  because the null is the shortlist.
+
+### Documentation and repository
+
+- README: a fork header with credits, install and a worked example for the
+  new commands, measured performance, how the fast search works, responsible
+  use, and data licences.
+- docs/fast-search.md: the design, storage and timing of the fast search,
+  with the prototype measurements and what did not work.
+- docs/heldout.md: the held-out protocol and the two held-out recordings
+  (McMaster Forest: one hit, with the silence filter off after the
+  pre-registered run missed; Safari Road: missed in every variant).
+- docs/other-signals.md: what else the recordings carry (jet loudness, mains
+  hum, rest frequency, stereo), as leads.
+- benchmarks/: JSON configs for the five recordings (events, harmonics, truth
+  pairs, UTC days, audio sources; site coordinates rounded to 0.01°) and
+  `benchmarks/run.py`, which runs a search and scores it.
+- pyproject: version 0.4.0, Andrew Medrano added as an author, URLs point to
+  the fork. The release workflow no longer publishes to PyPI (the job is
+  kept, disabled), since the fork would publish under upstream's name.
+- .gitignore: audio, arrays, stores, parquet and pickle files and the research
+  work directories.
+
+### From upstream after 0.3.0
 
 - `dopplertrack.verdict`: the winner of a search is judged against the wrong
   pairs the same search scored (an exponential upper tail fitted on the best

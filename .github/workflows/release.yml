@@ -1,16 +1,16 @@
 name: Release
 
-# Push a tag like v0.1.0 (matching the version in pyproject.toml) to:
+# Push a tag like v0.4.0 (matching the version in pyproject.toml) to:
 #   1. build the sdist and wheel,
-#   2. create a GitHub Release with them attached,
-#   3. publish to PyPI via trusted publishing (no API token needed).
+#   2. create a GitHub Release with them attached.
+# The PyPI job is kept from upstream but disabled: this fork would publish under
+# upstream's package name "dopplertrack". Rename the package before enabling it.
 on:
   push:
     tags: ["v*"]
 
 permissions:
   contents: write     # create the GitHub Release
-  id-token: write     # PyPI trusted publishing (OIDC)
 
 jobs:
   build:
@@ -44,9 +44,13 @@ jobs:
           generate_release_notes: true
 
   pypi:
+    if: false         # disabled on this fork, see the note at the top
     needs: build
     runs-on: ubuntu-latest
     environment: pypi
+    permissions:
+      contents: read
+      id-token: write   # PyPI trusted publishing (OIDC)
     steps:
       - uses: actions/download-artifact@v4
         with:

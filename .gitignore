@@ -24,14 +24,38 @@ Thumbs.db
 *.webm
 *.mp4
 *.m4a
+*.mp3
+*.flac
+*.ogg
+*.opus
+*.aac
 *.npz
+*.npy
 *.csv
+*.parquet
+*.pkl
+*.pickle
 !tests/data/*
 !docs/results/*
 /data/
 /cache/
 /results/
 *.log
+
+# Track stores, ADS-B days, benchmark runs and research work trees
+/stores/
+/runs/
+/benchmarks/runs/
+/adsb/
+/audio/
+/bench/
+/fast/
+/heldout/
+/chaff/
+/chaffout/
+/agentwork/
+/out/
+/scratch/
 
 # Secrets
 .env

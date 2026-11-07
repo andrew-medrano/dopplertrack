@@ -4,6 +4,19 @@
 
 Acoustic geolocation from the Doppler curves of propeller aircraft.
 
+> **This is a fork** of [mjshiggins/dopplertrack](https://github.com/mjshiggins/dopplertrack)
+> by MacCallister Higgins, which reimplements the method shown in colsto's
+> video ["I discovered a sound that leaks your exact location"](https://www.youtube.com/watch?v=UytYrhYLOKI).
+> The physics, the pair join, the gates, the curve model and the verdict are
+> upstream's. This fork adds a compact flight store (9.6× smaller than
+> upstream's day index), an exact closest approach on curved tracks, and a
+> two-stage search with a 50 m refinement. On a busy laptop a nationwide
+> search of one day took 1-2 minutes (up to 4.5 minutes when the silence
+> filter has a long stretch between events to check). Upstream took 5
+> minutes on the eagle-cam day and 34 minutes, swapping, on the Oyster Bay
+> day, on the same machine. There is no compatibility layer:
+> `dopplertrack store` converts an upstream day index once.
+
 Any outdoor (and many indoor) recordings contain faint, usually inaudible
 tones from aircraft flying over: the propeller blade-pass fundamental and its
 harmonics, between roughly 60 and 400 Hz. As the aircraft passes, the tone
@@ -12,181 +25,266 @@ listener was relative to the aircraft's real trajectory. With historical
 ADS-B data for every flight that day, each candidate location on the ground
 predicts a different curve, and the recording picks out the one that matches.
 
-This is a reimplementation of the technique shown in colsto's video
-["I discovered a sound that leaks your exact location"](https://www.youtube.com/watch?v=UytYrhYLOKI).
-No code was released with that video; this project is an open, automatic
-version of the method, with the search extended from a hand-drawn box to a
-whole continent.
+No code was released with the video. Upstream made the method open and
+automatic and extended the search from a hand-drawn box to a whole
+continent. This fork makes that search cheap enough to run on a laptop.
+Read [Responsible use](#responsible-use) before using it.
 
 ## Status
 
-Validated on two recordings with known answers: the video author's one-hour
-reference clip (Oyster Bay, NY, 2026-09-08) and a 12-hour public eagle-cam
-stream (North Fort Myers, FL, 2024-12-28). Both are searched against every
-propeller flight over the continental US that day, with no region given.
+| | Oyster Bay | eagle cam | railcam | McMaster Forest | Safari Road |
+|---|---|---|---|---|---|
+| role | development | development | development | held out | held out |
+| recording | 1 h, 2026-09-08 | 12 h, 2024-12-28 | 11.9 h, 2026-05-28 | 12 h, 2026-05-27 | 7 h, 2023-07-09 |
+| propeller flights that day (24-50° N, 66-125° W) | 35,427 | 13,046 | 29,420 | 25,892 | 15,613 |
+| rank of the true pair, two events | **1** of 498 | 13 of 500 | 53 of 499 | 2 of 500 ¹ | not found |
+| rank with extra flyovers | 1 | **1** of 200 | — | **1** of 200 ¹ | not found |
+| best point from the answer | 26 m | 741 m | 651 m | 0.76 km ² | winner 1,715 km off |
+| verdict (p) | located (0.09; 0.05 with the extra) | ambiguous (0.42) with extras | ambiguous (0.28), wrong pair | located (0.001) with extras ¹ | no match |
+| search time, M3 Pro, 11 workers ³ | 86 s | 54 s | 75 s | 59 s ¹ | 113 s ¹ |
 
-| | Oyster Bay | eagle cam |
-|---|---|---|
-| flights that day, CONUS | 35,427 | 13,046 |
-| flight pairs scored | 9,669 | 13,298 |
-| rank of the true pair, two events | **1** | 15 |
-| rank with further detected flyovers (`--extra`) | 1 | **1** |
-| best point from the truth | 32 m | 627 m |
-| margin over the runner-up | 24 % | 13 % |
-| verdict (p) | located (0.001) | located (0.06) |
-| verdict from the two events alone | ambiguous (0.23) | ambiguous (0.48) |
-| wall time, 16 threads, after the index | 18 min | 6 min |
+¹ With the silence filter off (`--no-silence`), a setting chosen after the
+pre-registered run, with the filter on, missed. See [docs/heldout.md](docs/heldout.md).
+² From a reference point in the preserve; the recorder's position is not known.
+³ After the track store exists; on a loaded machine, so upper bounds. Details
+under [Performance](#performance).
 
-A third recording, 12 hours from a railway camera in Atlanta searched the
-same way, is a negative: every pair of real flyovers puts the camera within
-440 m and in the top 6–32 of tens of thousands of pairs, and none wins,
-because the modelled curve of the true track has a kink the audio lacks and
-a smoother track elsewhere fits better. Its archived stream had also lost
-107 s in the middle, which put the extra flyovers on a different clock. The
-details and what they add to the roadmap are in the experiments page.
+The railcam is a negative result upstream already reported: the true pair
+fits well but a smoother wrong track fits better. The eagle cam needs its
+extra flyovers. Of the two held-out recordings, one was located, on a second
+run with a changed setting, and one was not.
 
-Two flyovers locate a recording when at least one passed low and to the side;
-two high, nearly overhead passes leave a plateau a few kilometres wide and a
-continent full of pairs that fit, which is what the extra flyovers are for.
-A margin is not a confidence: a box that does not contain the answer still
-returns a winner. So every search ends with a verdict: the winner is judged
-against the thousands of wrong pairs the same search scored on the same
-audio, and p is the chance a wrong winner would lead the next wrong pair by
-that much. The audio searched in a box 150 km from the answer gets
-"no match" (p = 0.88); of twenty searches of the railcam audio with no right
-answer among the pairs, two were called located, so p < 0.1 is a weak claim. The experiments behind these numbers, the regional
-searches that came first, and the failures along the way are in
-[docs/experiments.md](docs/experiments.md).
+Two flyovers locate a recording when at least one passed low and to the
+side. Two high, nearly overhead passes leave a plateau a few kilometres wide
+and a continent full of pairs that fit, which is what the extra flyovers are
+for. A margin is not a confidence: a search whose answer is not among the
+flights still returns a winner. So every search ends with a verdict: the
+winner is judged against the wrong pairs the same search scored, and p is
+the chance a wrong winner would lead the next wrong pair by that much.
+Upstream found false "located" calls (2 of 20 searches of the railcam with no
+right answer), and the two-stage search scores only a shortlist, so p is a
+guide, not a calibrated probability. Treat p < 0.1 as a weak claim.
 
-## Usage
+The upstream experiments behind these methods are in
+[docs/experiments.md](docs/experiments.md). This fork's measurements are in
+[docs/fast-search.md](docs/fast-search.md), the held-out tests in
+[docs/heldout.md](docs/heldout.md), and the configs to rerun them in
+[benchmarks/](benchmarks/).
+
+## Install
 
 ```bash
+git clone https://github.com/andrew-medrano/dopplertrack && cd dopplertrack
 uv sync
-uv run dopplertrack spectrogram recording.mp4 rec.npz
-uv run dopplertrack detect rec.npz --band 60 300 --top 10 --out detected.json
+```
+
+Python 3.12 or newer. `spectrogram` needs ffmpeg on the PATH for anything
+libsndfile cannot read (mp3, m4a, video).
+
+## Worked example: Oyster Bay
+
+colsto's raw one-hour clip ([youtu.be/4CxVxuMVkMc](https://youtu.be/4CxVxuMVkMc)),
+recorded on 2026-09-08. Only the date is given; the location and the start
+time come out of the search.
+
+```bash
+# 1. Audio to a whitened 40-450 Hz spectrogram.
+uv run dopplertrack spectrogram oyster_bay.wav rec.npz
+
+# 2. Measure two flyovers, and a faint third one as an extra.
 uv run dopplertrack fit rec.npz --window 2090 2200 --band 95 200 --harmonics 2 --out ev1.json
 uv run dopplertrack fit rec.npz --window 3020 3130 --band 95 195 --out ev2.json
-uv run dopplertrack fetch 2026-09-08 day --bbox 24 50 -125 -66            # one track store per day, reused by every search
+uv run dopplertrack fit rec.npz --window 1375 1465 --band 70 105 --harmonics 2 --out ev3.json
+#    (or find them: uv run dopplertrack detect rec.npz --band 60 300 --top 10 --out detected.json)
+
+# 3. One UTC day of propeller flights over the continental US, as a track store.
+uv run dopplertrack fetch 2026-09-08 day --bbox 24 50 -125 -66
+
+# 4. Search the whole store, rescore the best pairs with the extra flyover.
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES     # macOS only, see below
 uv run dopplertrack search rec.npz --events ev1.json ev2.json --day day --harmonics 2 1 \
-    --cands cands.npz --extra ev3.json ev4.json --out results.csv
+    --extra ev3.json --extra-harmonics 2 --workers 11 --out results.csv
+
+# 5. Optional: a 50 m grid around the winner, and the verdict again.
 uv run dopplertrack refine rec.npz results.csv --events ev1.json ev2.json --day day \
-    --harmonics 2 1 --extra ev3.json ev4.json --out fine.csv
+    --harmonics 2 1 --extra ev3.json --extra-harmonics 2 --out fine.csv
 uv run dopplertrack verdict results_extra.csv
 ```
 
+`search` prints the time of each stage, the best pair per flight pair and
+the verdict. On this recording the winner is the PC-12 and King Air 350 pair
+from the video, its best point 26 m from the answer, 8.1 % ahead of the runner-up; the
+verdict is "located" (p = 0.09, and 0.05 with the extra flyover).
+`results.csv` holds every scored candidate; `results_extra.csv` the best
+pairs rescored with the extra flyover.
+
+## Commands
+
 - `spectrogram` decodes any audio or video with ffmpeg and whitens a
-  high-resolution STFT of the 40–450 Hz band per frequency bin, so only
+  high-resolution STFT of the 40-450 Hz band per frequency bin, so only
   changing tones stand out.
 - `detect` finds the flyovers: an ideal straight-pass Doppler curve (f0,
-  speed, CPA distance, CPA time) is grid-searched in a sliding window and the
-  local maxima are refined and ranked. `fit` does the same in one window you
-  choose. Either writes event JSON that `search` takes as it is.
-- `fetch` streams one day of [adsb.lol](https://github.com/adsblol/globe_history_2026)
-  history from GitHub (4 GB, nothing stored), drops known jets, and writes the
-  track store a search runs on (see below). `--bbox` limits it to a region,
-  `--archive DIR` reads an archive already on disk.
-- `store DAY.npz DIR` converts a 1 Hz day index written by `fetch` in
-  dopplertrack 0.3 into a track store, reading it through memory maps.
-- `search` ranks (location, flight pair) candidates over the store, see
-  below. `--bbox` restricts it to a region, `--point LAT LON` scores one
-  known location (the quickest check on a recording whose answer you know),
-  and one event with `--utc TIME` searches a single flyover whose time is
-  known. `--cands` caches the candidate table, so a change to the scorer
-  reruns only the scoring. `--extra` rescores the best pairs with further
-  flyovers. It prints the time each stage took.
+  speed, CPA distance, CPA time) is grid-searched in a sliding window, and
+  the local maxima are refined and ranked. Its `burst` column flags events
+  that arrive with a broadband rumble (a passing train, say); `--max-burst`
+  drops them. `fit` does the same in one window you choose. Either writes
+  event JSON that `search` takes as it is.
+- `fetch DATE DIR` streams one day of [adsb.lol](https://github.com/adsblol)
+  history from GitHub (about 4 GB, nothing stored), drops known jets, and
+  writes a track store. `--bbox` limits it to a region, `--archive DIR` reads
+  an archive already on disk.
+- `store DAY.npz DIR` converts a 1 Hz day index written by upstream 0.3's
+  `fetch` into a track store, reading it through memory maps.
+- `search` ranks (location, flight pair) candidates over a store.
+  - `--bbox` restricts it to a region.
+  - `--point LAT LON` scores one known location, the quickest check on a
+    recording whose answer you know.
+  - One event with `--utc TIME` searches a single flyover whose time is known.
+  - `--extra` rescores the best `--top-pairs` pairs (200) with further
+    flyovers, all on one clock.
+  - `--cands` caches the candidate table, so a change to the scorer reruns
+    only the scoring.
+  - `--score ridge` scores how closely a curve follows the ridge traced in the
+    window instead of the brightness under it (for faint curves).
+  - `--no-silence` turns off the silence filter (for long recordings, below).
+  - `--exact-pairs`, `--exact-points`, `--refine-pairs` size the second stage.
 - `refine` lays a 50 m grid around one result, optionally with more events.
-- `verdict` judges the winner of a results CSV again (see step 7 below).
+- `verdict CSV` judges the winner of a results CSV again.
 
-The heavy stages run in a process pool. `--workers` sets its size; the
+The heavy stages run in a process pool. `--workers` sets its size. The
 default is every core on Linux and 1 on macOS, where forking a process that
 has used Objective-C or BLAS threads is unsafe by default. On macOS, export
 `OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` before passing `--workers`.
 
-### The track store
+## How the fast search works
 
-A store is a directory: every airborne stretch of every flight as knots every
-15 s, each with time, position and velocity in one Earth-centred frame
-(float32), the track between two knots being the cubic Hermite curve through
-them. Positions and velocities come from a 31 s quadratic least-squares fit
-of the 1 Hz track, so range rates are not differenced from noisy positions.
-Beside the knots it holds a 10 s light index (one sample per flight per
-bucket) for the join and the silence filter. Arrays are memory-mapped, so a
-store opens in under a second and costs no RAM until read. `meta.json`
-carries a format version; a store of another version is refused with the
-command that rebuilds it.
-
-For the Oyster Bay day (121,926 flight segments over the continental US) the
-1 Hz index of dopplertrack 0.3 is 6.2 GB; the store is 646 MB, of which
-358 MB is the light index, and `store` converts one into the other in 1 to
-2.5 minutes on an M3 Pro (58 s idle, 150 s under load), peaking at 2.8 GB of
-memory. The Hermite curve follows a straight or gently turning 1 Hz track
-to well under a metre; in a standard-rate turn (3°/s at 60 m/s) the 31 s fit
-cuts the corner by about 8 m and the speed by about 4 m/s.
-
-## How the search works
-
-1. **Join.** Two events heard Δt apart at fitted slant distances d1 and d2
+1. **Track store.** Every airborne stretch of every flight is kept as knots
+   every 15 s: time, position and velocity in one Earth-centred frame,
+   float32. Between knots the track is the cubic Hermite curve through them.
+   Positions and velocities come from a 31 s quadratic least-squares fit of
+   the 1 Hz track, so range rates are not differenced from noisy positions.
+   A 10 s light index (one sample per flight per bucket) serves the join and
+   the silence filter. The arrays are memory-mapped `.npy` files, so a store
+   opens in under a second and costs no RAM until read. `meta.json` carries a
+   format version; a store of another version is refused with the command
+   that rebuilds it.
+2. **Join.** Two events heard Δt apart at fitted slant distances d1 and d2
    mean the two aircraft were within d1 + d2 of each other, Δt apart in
-   emission time (give or take the propagation delays). That is a join over
-   the store's 10 s samples with KD-trees, speed-gated, and it leaves a few
-   tens of thousands of flight pairs out of hundreds of millions.
-2. **Lens.** For each pair, ground points are laid only where both flights
+   emission time (give or take the propagation delays). That is a KD-tree
+   join over the light index, speed-gated, and it leaves tens of thousands of
+   flight pairs out of hundreds of millions.
+3. **Lens.** For each pair, ground points are laid only where both flights
    could have been heard: a 1 km lattice first, then 200 m where it passes.
    Every point gets the exact closest point of approach to each stored
    trajectory: slant distance (with a DEM for the observer's elevation),
    speed, and the *heard* CPA time. The closest approach is found on the
-   Hermite curve itself: the nearest chord among all chords of the window
-   (with a proven shortcut for long windows), then Newton steps on the arc
-   of every chord that could still win, so a turning or circling track that
-   comes back near a point is not missed. Points must hear an event-1-like
-   pass, then exactly Δt later an event-2-like pass, with no other propeller
-   flight within 6 km in between.
-3. **Tables.** Over the seconds that decide a Doppler curve most flights fly
-   nearly straight, so each candidate first gets the score of the ideal
-   straight pass with its own CPA distance and speed. Those scores are
-   tabulated once per event over distance × speed × time shift and looked
-   up for every candidate.
-4. **Exact score.** For the best 500 pairs by table score, their best 20
-   candidates each are scored on the real trajectory: the Doppler curve each
-   would hear is modelled from the stored track (emission-time radial
-   velocity) and scored against the spectrogram. Event 1's placement is
-   swept over small time shifts and f0 scales, which absorb measurement
-   error; event 2 is placed with the same shift, locked to the flight
-   geometry. Score = brightness under both curves.
-5. **Refine.** Around the best point of each of the best 50 pairs, a 50 m
+   Hermite curve itself: the nearest chord, then Newton steps on the arc of
+   every chord that could still be closer, so a turning or circling track
+   that comes back near a point is not missed. Points must hear an
+   event-1-like pass, then Δt later an event-2-like pass, with no other
+   propeller flight within 6 km in between (the silence filter).
+4. **Tables.** Over the seconds that shape a Doppler curve most flights fly
+   nearly straight. So each event gets a table of straight-pass scores over
+   CPA distance × speed × time shift, built once, and every candidate gets a
+   table lookup.
+5. **Exact score.** The best 20 candidates of each of the best 500 pairs by
+   table score (about 1 % of candidates) are scored on their real
+   trajectories: the curve each would hear is modelled from the stored track
+   (emission-time radial velocity) and scored against the spectrogram.
+   Event 1's placement is swept over small time shifts and f0 scales, which
+   absorb measurement error; event 2 is placed with the same shift, locked to
+   the flight geometry. The scorer works on a log-frequency axis (0.1 %
+   steps) with the harmonics summed once, so an f0 scale is an index offset
+   and each placement is one integer gather.
+6. **Refine.** Around the best point of each of the best 50 pairs, a 50 m
    lattice (±300 m) is gated the same way and scored exactly. A sharp peak
    can sit between two points of the 200 m lattice: on Oyster Bay a point
    190 m off scores 24 against 29 at the peak.
-6. **More events.** For the best pairs, each further flyover is matched to a
+7. **More events.** For the best pairs, each further flyover is matched to a
    flight at the pair's best point and scored at all of its points with that
-   point's shift, so every event is on one clock. `refine` does the same on
-   a fine grid around one result.
-7. **Verdict.** At most one scored pair is right; the rest are the null
-   distribution for this recording. The upper tail of their scores is fitted
-   as exponential, and the gap between the winner and the best other pair is
-   tested against it: located (p < 0.1), ambiguous (p < 0.5), or no match.
-   The null is the shortlisted pairs only, some refined and some not, so p
-   is a guide rather than a calibrated probability.
+   point's shift, so every event is on one clock.
+8. **Verdict.** At most one scored pair is right; the rest are the null for
+   this recording. The upper tail of their scores is fitted as exponential,
+   and the winner's lead over the best other pair is tested against it:
+   located (p < 0.1), ambiguous (p < 0.5), or no match.
 
-`--exact-pairs`, `--exact-points` and `--refine-pairs` set the sizes of
-steps 4 and 5. When there are no more pairs than `--exact-pairs` and no pair
-has more candidates than `--exact-points` (always so with `--point`), every
-candidate is scored exactly and the tables are skipped.
+With `--point`, or whenever no more than `--exact-pairs` pairs and
+`--exact-points` candidates per pair survive, every candidate is scored
+exactly and the tables are skipped. The ideal-curve fits only seed the gates
+(`--v-tol`, `--d-tol`; open them for a faint or turning pass); ranking uses
+real trajectories throughout.
 
-The scorer works on a log-frequency axis: the window is resampled once onto
-(query time × log frequency, 0.1 % steps) with every harmonic summed, so an
-f0 scale is an index offset and each placement is one integer gather. Its
-scores correlate 0.999 with bilinear sampling on the linear axis on the
-synthetic tests.
+On long recordings the silence filter can veto the right answer: between
+two events hours apart, another propeller flight almost always passed within
+6 km. Upstream turned it off for its 12-hour railcam; the McMaster hit in
+[docs/heldout.md](docs/heldout.md) needed it off.
 
-The ideal-curve fits only seed the gates (`--v-tol`, `--d-tol`; open them
-for a faint or turning pass); ranking uses real trajectories throughout.
-`--score ridge` scores how closely a curve follows the ridge traced in the
-window instead of the brightness under it.
+## Performance
+
+All numbers are from an Apple M3 Pro (12 cores, 18 GB RAM) with 11 worker
+processes, on 2026-11-06. The machine was **not idle**: other jobs kept the
+load average between 19 and 60, so wall times are upper bounds and CPU time
+is the steadier comparison. Full tables, and how each was measured, are in
+[docs/fast-search.md](docs/fast-search.md).
+
+**Storage.** A search needs the knots and the light index, so both are
+counted.
+
+| day | upstream 1 Hz index | track store | ratio |
+|---|---|---|---|
+| Oyster Bay | 6.21 GB | 646 MB (288 MB knots + 358 MB light index) | 9.6× |
+| eagle cam | 1.93 GB | 201 MB | 9.6× |
+| railcam | 5.54 GB | 577 MB | 9.6× |
+| McMaster Forest | 4.69 GB | 488 MB | 9.6× |
+| Safari Road | 1.93 GB | 202 MB | 9.6× |
+
+The knots alone are 21-22× smaller. Upstream reads its index into RAM; the
+store is memory-mapped and opens in 0.2-2.4 s. The main search process
+peaked at 1.4-2.4 GB.
+
+**Search time, this fork against upstream 0.3, same machine, run one after
+the other:**
+
+| | upstream 0.3 | this fork | ratio |
+|---|---|---|---|
+| eagle cam, wall / CPU time | 309 s / 2,654 s | 58 s / 458 s | 5.4× / 5.8× |
+| eagle cam, peak memory | 3.6 GB | 1.4 GB | |
+| Oyster Bay, wall / CPU time | 2,043 s / 12,086 s | 88 s / 664 s | 23× / 18× |
+| Oyster Bay, peak memory | 8.5 GB | 1.7 GB | |
+
+Upstream's Oyster Bay run swapped (its 6.2 GB index on an 18 GB machine)
+and shared the machine with the test suite for 7 of its 34 minutes, so its
+ratio overstates what a machine with spare RAM would see; the eagle cam's
+5-6× is the fairer figure. Both searches found the same winners.
+
+The five recordings took 54-113 s each with the default settings or with
+the silence filter off, and 159-267 s with the filter on for the two
+held-out recordings, whose events are 47 minutes and 5.3 hours apart. The
+lens stage (lattices, exact closest approaches, gates, silence filter) is
+now 80-96 % of the time; the scoring that dominated upstream takes 4-7 s.
+
+**Earlier figures.** A research write-up before this port gave "10-26×
+faster". That compared the prototype with upstream's scorer timed on a
+4,000-row sample and **extrapolated**, on a laptop that was swapping. Against
+a measured full log-axis search the prototype was 5.8-7× faster. On the
+held-out recordings the prototype took 53-131 s per day. A year of days
+would be 365 searches, about 6-15 hours at 1-2.5 minutes each (more where
+the silence filter is slow), with the stores already built (streaming one
+day's archive took 1-5 minutes here). Nothing year-long was run, and
+per-day p-values are not corrected for 365 searches.
+
+**What the speed costs.** Only about 1 % of candidates are scored exactly,
+and the verdict's null is the shortlist. On the eagle cam with its extras,
+upstream finds the same winner with a 13.5 % margin and "located"
+(p = 0.05); this fork gives 4.9 % and "ambiguous" (p = 0.42). On the railcam
+the true pair misses the refinement by 0.06 points and ranks 53rd. On Oyster
+Bay with its extra flyover, upstream leads by 24.3 % (p = 0.0001) and this
+fork by 11.3 % (p = 0.05).
 
 ## Differences from the method in the video
 
-The physics and the search strategy are the author's. What differs:
+The physics and the search strategy are the video author's. What upstream
+changed, and this fork keeps:
 
 - **Automatic curve measurement.** The video slides f0, speed, distance and
   CPA time by hand until the overlay looks right. `fit` and `detect` do it
@@ -201,41 +299,94 @@ The physics and the search strategy are the author's. What differs:
 - **Open data path.** adsb.lol daily archives, ICAO Doc 8643 engine classes
   and AWS terrain tiles, each with a loader; nothing scraped or paid.
 - **One command for every search.** A box, a known point, or one flyover
-  with a known time are options on the same search, not separate methods.
+  with a known time are options on the same search.
 
 Kept on purpose: emission-time radial velocity, propagation-delayed CPA
 times, slant distance with a DEM, the inter-event offset filter, the silence
 filter, and locked two-event scoring.
 
-## Data sources (all free)
+## Responsible use
 
-| Need | Source |
-|---|---|
-| Historical ADS-B | adsb.lol `globe_history_YYYY` GitHub releases (~4 GB/day) |
-| Aircraft engine class | OpenSky mirror of ICAO Doc 8643 |
-| Elevation | AWS Terrain Tiles (Terrarium) |
+This is a dual-use tool. It lowers the cost of finding where a recording was
+made: a dated outdoor recording with two or more propeller flyovers can be
+checked against every propeller flight over the continental US in a couple
+of minutes on a laptop, and a year of dates is roughly 6-15 hours of
+searching. That
+puts people who post audio or video (a backyard stream, a field recording,
+a voice memo by an open window) within reach of anyone who wants to find
+them.
+
+Do not use it to locate people who have not agreed to it. It exists to show
+how much a recording leaks, to test defences, and to verify the provenance
+of public recordings.
+
+Its limits, which protect no one reliably: it needs at least two flyovers
+the spectrogram shows, ADS-B coverage of those flights, and the UTC date or a
+search over many dates. It is wrong often. Of the two recordings it had not
+seen, it located one, and only on a second run with a changed setting. Over
+many dates the per-day p-values are not corrected for the number of
+searches, so confident wrong answers become likely.
+
+If you publish recordings and want to make this harder:
+
+- **Remove the band it uses.** A high-pass filter above about 450 Hz removes
+  the propeller fundamentals and low harmonics this search reads (it also
+  thins voices and music). Higher harmonics can survive in loud passes; this
+  has not been tested against an attacker who looks for them.
+- **Withhold the date and time**, and strip them from file metadata. This
+  only raises the cost: one search per candidate day.
+- **Publish short clips.** Fewer flyovers mean fewer constraints, but one
+  flyover with a known time still placed Oyster Bay within 2 km in a box.
+- **Add decoys.** [chaff](https://github.com/andrew-medrano/chaff) adds
+  synthetic propeller flyovers so a search finds too many plausible curves.
+  In its own tests it made the search unreliable rather than defeating it: on
+  Oyster Bay the true pair was still, narrowly, the most confident answer,
+  and its louder decoys are audible. Its README lists what was measured and
+  what was not.
+
+None of these touch other side channels (mains hum, voices, landmarks).
+
+## Data and licences
+
+| need | source | licence |
+|---|---|---|
+| historical ADS-B | adsb.lol `globe_history_YYYY` GitHub releases (about 4 GB a day) | [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) |
+| aircraft engine class | OpenSky mirror of ICAO Doc 8643 | as published by OpenSky |
+| elevation | AWS Terrain Tiles (Terrarium) | per the [tile sources' attribution](https://github.com/tilezen/joerd/blob/master/docs/attribution.md) |
+
+Flight data and track stores derived from adsb.lol are a database under
+ODbL: if you share them, attribute adsb.lol and share them under the same
+licence. Nothing derived from it is committed here beyond small result
+tables. No recordings are redistributed. The benchmark configs link to the
+public sources (YouTube, the Internet Archive), and the held-out recordings
+carry no stated licence.
+
+The code is MIT, as upstream: copyright MacCallister Higgins, with this
+fork's changes by Andrew Medrano ([LICENSE](LICENSE)).
 
 ## Development
 
 ```bash
-uv run pytest
+uv sync --dev
+uv run pytest -q
 ```
 
-The suite runs on synthetic flights in about three minutes. The Oyster Bay
-check against the real recording is opt-in: set `DOPPLERTRACK_OYSTER_BAY`
-to a directory holding `rec.npz` and `traces_ny.npz` (see
-`tests/test_oyster_bay.py`). The original design notes are in
+The suite runs on synthetic flights in a few minutes. The Oyster Bay check
+against the real recording is opt-in: set `DOPPLERTRACK_OYSTER_BAY` to a
+directory holding `rec.npz` and `traces_ny.npz` (see
+`tests/test_oyster_bay.py`). Upstream's design notes are in
 `docs/superpowers/specs/`; [CHANGELOG.md](CHANGELOG.md) lists the changes
 per release.
 
 ## Releasing
 
 Pushing a tag `vX.Y.Z` that matches the version in `pyproject.toml` runs
-`.github/workflows/release.yml`: tests, sdist and wheel, a GitHub Release
-with generated notes, and PyPI through trusted publishing.
+`.github/workflows/release.yml`: tests, sdist and wheel, and a GitHub
+Release with generated notes. The PyPI job from upstream is disabled on this
+fork, since it would publish under upstream's package name.
 
 ```bash
-uv version 0.3.0            # bump pyproject.toml
-git commit -am "Release 0.3.0"
-git tag v0.3.0 && git push && git push --tags
+uv version 0.4.1            # bump pyproject.toml
+git commit -am "Release 0.4.1"
+git tag v0.4.1 && git push && git push --tags
 ```
