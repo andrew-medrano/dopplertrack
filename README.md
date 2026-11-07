@@ -66,11 +66,12 @@ uv run dopplertrack spectrogram recording.mp4 rec.npz
 uv run dopplertrack detect rec.npz --band 60 300 --top 10 --out detected.json
 uv run dopplertrack fit rec.npz --window 2090 2200 --band 95 200 --harmonics 2 --out ev1.json
 uv run dopplertrack fit rec.npz --window 3020 3130 --band 95 195 --out ev2.json
-uv run dopplertrack fetch 2026-09-08 day.npz --bbox 24 50 -125 -66          # one index per day, reused by every search
-uv run dopplertrack search rec.npz --events ev1.json ev2.json --day day.npz --harmonics 2 1 \
+uv run dopplertrack fetch 2026-09-08 day --bbox 24 50 -125 -66            # one track store per day, reused by every search
+uv run dopplertrack search rec.npz --events ev1.json ev2.json --day day --harmonics 2 1 \
     --cands cands.npz --extra ev3.json ev4.json --out results.csv
-uv run dopplertrack refine rec.npz results.csv --events ev1.json ev2.json --day day.npz \
+uv run dopplertrack refine rec.npz results.csv --events ev1.json ev2.json --day day \
     --harmonics 2 1 --extra ev3.json ev4.json --out fine.csv
+uv run dopplertrack verdict results_extra.csv
 ```
 
 - `spectrogram` decodes any audio or video with ffmpeg and whitens a
@@ -82,45 +83,101 @@ uv run dopplertrack refine rec.npz results.csv --events ev1.json ev2.json --day 
   choose. Either writes event JSON that `search` takes as it is.
 - `fetch` streams one day of [adsb.lol](https://github.com/adsblol/globe_history_2026)
   history from GitHub (4 GB, nothing stored), drops known jets, and writes the
-  day index a search runs on: every flight resampled to 1 Hz in one
-  Earth-centred frame, plus a sample per flight per 10 s. `--bbox` limits it
-  to a region, `--archive DIR` reads an archive already on disk.
-- `search` ranks (location, flight pair) candidates over the index, see
+  track store a search runs on (see below). `--bbox` limits it to a region,
+  `--archive DIR` reads an archive already on disk.
+- `store DAY.npz DIR` converts a 1 Hz day index written by `fetch` in
+  dopplertrack 0.3 into a track store, reading it through memory maps.
+- `search` ranks (location, flight pair) candidates over the store, see
   below. `--bbox` restricts it to a region, `--point LAT LON` scores one
   known location (the quickest check on a recording whose answer you know),
   and one event with `--utc TIME` searches a single flyover whose time is
   known. `--cands` caches the candidate table, so a change to the scorer
   reruns only the scoring. `--extra` rescores the best pairs with further
-  flyovers.
+  flyovers. It prints the time each stage took.
 - `refine` lays a 50 m grid around one result, optionally with more events.
+- `verdict` judges the winner of a results CSV again (see step 7 below).
+
+The heavy stages run in a process pool. `--workers` sets its size; the
+default is every core on Linux and 1 on macOS, where forking a process that
+has used Objective-C or BLAS threads is unsafe by default. On macOS, export
+`OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES` before passing `--workers`.
+
+### The track store
+
+A store is a directory: every airborne stretch of every flight as knots every
+15 s, each with time, position and velocity in one Earth-centred frame
+(float32), the track between two knots being the cubic Hermite curve through
+them. Positions and velocities come from a 31 s quadratic least-squares fit
+of the 1 Hz track, so range rates are not differenced from noisy positions.
+Beside the knots it holds a 10 s light index (one sample per flight per
+bucket) for the join and the silence filter. Arrays are memory-mapped, so a
+store opens in under a second and costs no RAM until read. `meta.json`
+carries a format version; a store of another version is refused with the
+command that rebuilds it.
+
+For the Oyster Bay day (121,926 flight segments over the continental US) the
+1 Hz index of dopplertrack 0.3 is 6.2 GB; the store is 646 MB, of which
+358 MB is the light index, and `store` converts one into the other in 1 to
+2.5 minutes on an M3 Pro (58 s idle, 150 s under load), peaking at 2.8 GB of
+memory. The Hermite curve follows a straight or gently turning 1 Hz track
+to well under a metre; in a standard-rate turn (3°/s at 60 m/s) the 31 s fit
+cuts the corner by about 8 m and the speed by about 4 m/s.
 
 ## How the search works
 
 1. **Join.** Two events heard Δt apart at fitted slant distances d1 and d2
    mean the two aircraft were within d1 + d2 of each other, Δt apart in
    emission time (give or take the propagation delays). That is a join over
-   the day's 10 s samples with KD-trees, speed-gated, and it leaves a few
+   the store's 10 s samples with KD-trees, speed-gated, and it leaves a few
    tens of thousands of flight pairs out of hundreds of millions.
 2. **Lens.** For each pair, ground points are laid only where both flights
    could have been heard: a 1 km lattice first, then 200 m where it passes.
-   Every point gets the exact closest point of approach to each real
+   Every point gets the exact closest point of approach to each stored
    trajectory: slant distance (with a DEM for the observer's elevation),
-   speed, and the *heard* CPA time. Points must hear an event-1-like pass,
-   then exactly Δt later an event-2-like pass, with no other propeller
+   speed, and the *heard* CPA time. The closest approach is found on the
+   Hermite curve itself: the nearest chord among all chords of the window
+   (with a proven shortcut for long windows), then Newton steps on the arc
+   of every chord that could still win, so a turning or circling track that
+   comes back near a point is not missed. Points must hear an event-1-like
+   pass, then exactly Δt later an event-2-like pass, with no other propeller
    flight within 6 km in between.
-3. **Score.** The Doppler curve each survivor would hear is modelled from the
-   real trajectory (emission-time radial velocity) and scored against the
-   spectrogram. Event 1's placement is swept over small time shifts and f0
-   scales, which absorb measurement error; event 2 is placed with the same
-   shift, locked to the flight geometry. Score = brightness under both curves.
-4. **More events.** For the best pairs, each further flyover is matched to a
+3. **Tables.** Over the seconds that decide a Doppler curve most flights fly
+   nearly straight, so each candidate first gets the score of the ideal
+   straight pass with its own CPA distance and speed. Those scores are
+   tabulated once per event over distance × speed × time shift and looked
+   up for every candidate.
+4. **Exact score.** For the best 500 pairs by table score, their best 20
+   candidates each are scored on the real trajectory: the Doppler curve each
+   would hear is modelled from the stored track (emission-time radial
+   velocity) and scored against the spectrogram. Event 1's placement is
+   swept over small time shifts and f0 scales, which absorb measurement
+   error; event 2 is placed with the same shift, locked to the flight
+   geometry. Score = brightness under both curves.
+5. **Refine.** Around the best point of each of the best 50 pairs, a 50 m
+   lattice (±300 m) is gated the same way and scored exactly. A sharp peak
+   can sit between two points of the 200 m lattice: on Oyster Bay a point
+   190 m off scores 24 against 29 at the peak.
+6. **More events.** For the best pairs, each further flyover is matched to a
    flight at the pair's best point and scored at all of its points with that
    point's shift, so every event is on one clock. `refine` does the same on
-   a fine grid.
-5. **Verdict.** At most one scored pair is right; the rest are the null
+   a fine grid around one result.
+7. **Verdict.** At most one scored pair is right; the rest are the null
    distribution for this recording. The upper tail of their scores is fitted
    as exponential, and the gap between the winner and the best other pair is
    tested against it: located (p < 0.1), ambiguous (p < 0.5), or no match.
+   The null is the shortlisted pairs only, some refined and some not, so p
+   is a guide rather than a calibrated probability.
+
+`--exact-pairs`, `--exact-points` and `--refine-pairs` set the sizes of
+steps 4 and 5. When there are no more pairs than `--exact-pairs` and no pair
+has more candidates than `--exact-points` (always so with `--point`), every
+candidate is scored exactly and the tables are skipped.
+
+The scorer works on a log-frequency axis: the window is resampled once onto
+(query time × log frequency, 0.1 % steps) with every harmonic summed, so an
+f0 scale is an index offset and each placement is one integer gather. Its
+scores correlate 0.999 with bilinear sampling on the linear axis on the
+synthetic tests.
 
 The ideal-curve fits only seed the gates (`--v-tol`, `--d-tol`; open them
 for a faint or turning pass); ranking uses real trajectories throughout.

@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+**Breaking: searches run on a track store, in two stages.** No compatibility
+layer: the 1 Hz day index, its loader and the score-everything search are
+gone; `dopplertrack store` converts an old index once.
+
+| before | now |
+|---|---|
+| `fetch DATE day.npz` (1 Hz day index, 6.2 GB for a CONUS day) | `fetch DATE DIR` (track store, 646 MB for the same day) |
+| — | `store DAY.npz DIR` converts a 0.3 day index (memory-mapped; 58 s and a 2.8 GB peak for 6.2 GB) |
+| `search … --day day.npz` scores every candidate | `search … --day DIR`: table scores for every candidate, exact scores for the best 20 points of the best 500 pairs, a 50 m refinement around the best 50 (`--exact-pairs`, `--exact-points`, `--refine-pairs`) |
+| `refine … --day day.npz` | `refine … --day DIR` |
+| — | `verdict RESULTS.csv` |
+
+- `dopplertrack.store.TrackStore`: knots every 15 s with positions and
+  velocities from a 31 s quadratic fit (cubic Hermite between knots), plus
+  the 10 s light index the join and the silence filter use; float32 `.npy`
+  files and a versioned `meta.json`, memory-mapped on load. It replaces
+  `search.DayIndex`, `search.Segment` and `build_segments`. Exact scoring
+  models curves from the stored tracks with their own velocities instead
+  of differencing 1 Hz positions.
+- `dopplertrack.cpa.closest_approach`: the closest approach to the stored
+  curve, not its chords: the nearest chord among all chords of the window,
+  then Newton steps on the arc of every chord within its arc bound. On
+  turning and circling tracks it is within 0.3 m of brute force on the
+  curve; a nearest-knot search had been off by up to 183 m there.
+  `closest_approach_dense` is the brute-force reference.
+- `score.EventWindow` scores on a log-frequency axis (0.1 % steps) with the
+  harmonics summed once per window, in brightness and ridge mode alike.
+  Scores correlate 0.999 with the linear-axis bilinear scorer on the
+  synthetic tests; the best placement moves by at most one grid step.
+  `locked_score`, `single_score` and `modelled_curve` take `store.Track`s.
+- `dopplertrack.tables`: straight-pass score tables per event over distance ×
+  speed × shift; `search.table_scores`, `shortlist` and `refine_candidates`
+  are the stages around them. `run_search` reports counts and stage times in
+  `.attrs["stats"]` and the CLI prints them. Results carry a `stage` column
+  (`exact` or `refine`).
+- The fine lattice's pre-gate judges distance only: on a turning track the
+  chords' CPA time and speed can be off by more than any small slack, and
+  a 3 s / 2 % slack dropped 2.3 % of the valid candidates of 20,000 pairs of
+  the eagle-cam day.
+- The silence filter takes candidate points in 10-minute groups, each against
+  the flights near it in its own window, and checks only the points within
+  reach of each flight: a pair whose flights stay together for an hour costs
+  1 s of CPU instead of 22 s with one window for all its points.
+- Terrain tiles are decoded once into memory-mapped float32 `.npy` files.
+- On the synthetic scene of tests/test_search.py the two-stage search puts
+  the winner 2 m from the observer; scoring every 200 m candidate put it
+  143 m away. On real data (0.3 indexes converted with `store`): Oyster Bay
+  ranks the true pair 1 of 500 shortlisted pairs, 26 m from the answer, 8.1 %
+  ahead, located (p = 0.09; 0.05 with its extra flyover); the eagle cam
+  ranks it 13 of 500 with two events and 1 of 200 with its three extra
+  flyovers (4.9 % ahead, ambiguous, p = 0.42).
+
 - `dopplertrack.verdict`: the winner of a search is judged against the wrong
   pairs the same search scored (an exponential upper tail fitted on the best
   wrong pairs; p is the chance a wrong winner would lead the next wrong pair by
