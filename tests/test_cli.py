@@ -3,7 +3,6 @@ with `store`, then `search` (two events, a known point, one event at a known tim
 and `verdict` on the files the previous step wrote."""
 import json
 
-import numpy as np
 import pandas as pd
 import pytest
 
