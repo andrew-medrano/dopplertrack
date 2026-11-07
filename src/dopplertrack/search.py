@@ -267,6 +267,8 @@ def _silent_group(st: TrackStore, p: LensParams, F, ha, hb, seg1: int, seg2: int
         return keep
     tf = cKDTree(F)
     for so in sorted(others):
+        if not keep.any():
+            break
         ch = st.chain(so, ta - 60.0, tb + 60.0)
         if ch is None:
             continue
@@ -276,6 +278,7 @@ def _silent_group(st: TrackStore, p: LensParams, F, ha, hb, seg1: int, seg2: int
         reach = p.silence_d_m + 0.5 * float(np.linalg.norm(ch.p[1:] - ch.p[:-1], axis=1).max()) + arc_bound(ch)
         hits = tf.query_ball_point(mid, reach)
         near = np.unique(np.concatenate([np.asarray(h, np.int64) for h in hits])) if len(hits) else np.zeros(0, np.int64)
+        near = near[keep[near]]          # a point already silenced stays silenced
         if not len(near):
             continue
         do, ho, _, io = closest_approach(F[near], ch, p.c)
