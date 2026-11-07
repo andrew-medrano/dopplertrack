@@ -204,7 +204,12 @@ def main(argv=None):
         print(fine.head(10).to_string())
     elif a.cmd == "verdict":
         import pandas as pd
-        print(verdict(pd.read_csv(a.results, keep_default_na=False)))
+        res = pd.read_csv(a.results, keep_default_na=False)
+        missing = {"icao1", "icao2", "score"} - set(res.columns)
+        if missing:
+            ap.error(f"{a.results} has no {', '.join(sorted(missing))} column: give a CSV written by search "
+                     "(refine's grid is one pair, so there is nothing to judge it against)")
+        print(verdict(res))
 
 if __name__ == "__main__":
     main()

@@ -71,3 +71,10 @@ def test_parse_utc_reads_times_without_an_offset_as_utc():
     assert cli.parse_utc("2026-09-08T20:53:26") == 1788900806.0
     assert cli.parse_utc("2026-09-08T16:53:26-04:00") == 1788900806.0
     assert cli.parse_utc("1788900806") == 1788900806.0
+
+
+def test_verdict_refuses_a_csv_without_pairs(tmp_path):
+    p = tmp_path / "fine.csv"
+    pd.DataFrame({"lat": [40.0], "lon": [-73.0], "score": [30.0]}).to_csv(p, index=False)
+    with pytest.raises(SystemExit):
+        cli.main(["verdict", str(p)])
