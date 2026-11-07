@@ -196,18 +196,23 @@ class TrackStore:
         start = np.repeat(np.cumsum(n) - n, n)
         b = np.repeat(blo, n) + (np.arange(len(ss)) - start)
         tq = (b + 0.5) * bucket_s
-        # interval of each sample: global knot index i with kt[i] <= tq < kt[i+1] inside its segment
+        # interval of each sample: global knot index i with kt[i] <= tq < kt[i+1] inside its segment;
+        # evaluated in blocks of 1 M samples, so a continent's 15 M never need gigabytes of temporaries
         key = np.arange(S, dtype=np.float64).repeat(np.diff(off)) * 1e7 + (kt - self.meta["t0"])
-        i = np.searchsorted(key, ss * 1e7 + (tq - self.meta["t0"]), "right") - 1
-        i = np.clip(i, off[ss], off[ss + 1] - 2)
         kp, kv = self.a["kp"], self.a["kv"]
-        p, v = hermite(kt[i], kt[i + 1], kp[i].astype(float), kp[i + 1].astype(float), kv[i].astype(float),
-                       kv[i + 1].astype(float), tq)
+        spos = np.empty((len(b), 3), np.float32); sspd = np.empty(len(b), np.float32)
+        for a0 in range(0, len(b), 1 << 20):
+            sl = slice(a0, a0 + (1 << 20))
+            sq, tqq = ss[sl], tq[sl]
+            i = np.searchsorted(key, sq * 1e7 + (tqq - self.meta["t0"]), "right") - 1
+            i = np.clip(i, off[sq], off[sq + 1] - 2)
+            p, v = hermite(kt[i], kt[i + 1], kp[i].astype(float), kp[i + 1].astype(float), kv[i].astype(float),
+                           kv[i + 1].astype(float), tqq)
+            spos[sl] = p; sspd[sl] = np.linalg.norm(v, axis=1)
         b0 = int(b.min()) if len(b) else 0
         order = np.argsort(b, kind="stable")
         self.meta["b0"] = b0
-        self.a.update(sb=(b[order] - b0).astype(np.int32), ss=ss[order], spos=p[order].astype(np.float32),
-                      sspd=np.linalg.norm(v[order], axis=1).astype(np.float32))
+        self.a.update(sb=(b[order] - b0).astype(np.int32), ss=ss[order], spos=spos[order], sspd=sspd[order])
         self._count()
 
     def _count(self):
@@ -337,7 +342,9 @@ class TrackStore:
 
     def bucket_slice(self, b: int) -> slice:
         sb = self.a["sb"]
-        return slice(int(np.searchsorted(sb, b, "left")), int(np.searchsorted(sb, b, "right")))
+        # the key must have sb's dtype: a Python int would make numpy cast all of sb to int64 per call
+        k = np.int32(np.clip(b, -2**31, 2**31 - 1))
+        return slice(int(np.searchsorted(sb, k, "left")), int(np.searchsorted(sb, k, "right")))
 
     def tree(self, b: int) -> cKDTree | None:
         """KD-tree of every light-index sample in bucket b (cached); None if the bucket is empty."""
