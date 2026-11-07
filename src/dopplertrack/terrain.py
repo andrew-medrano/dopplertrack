@@ -1,4 +1,5 @@
-"""Ground elevation from AWS Terrain Tiles (Terrarium encoding), cached on disk."""
+"""Ground elevation from AWS Terrain Tiles (Terrarium encoding), cached on disk as PNG and as
+decoded float32 .npy grids."""
 from __future__ import annotations
 
 import os
@@ -40,15 +41,25 @@ class Terrain:
                     raise
 
     def prefetch(self, tiles, workers: int = 16) -> None:
-        missing = [t for t in tiles if not self._path(*t).exists()]
+        missing = [t for t in tiles if t not in self._mem and not self._path(*t).exists()
+                   and not (self.cache / f"{t[0]}_{t[1]}.npy").exists()]
         if missing:
             with ThreadPoolExecutor(workers) as ex:
                 list(ex.map(lambda t: self._download(*t), missing))
 
     def _tile(self, x: int, y: int) -> np.ndarray:
+        """Elevation grid of one tile (256 x 256, m). The PNG is decoded once into a float32
+        .npy beside it, which later reads (and other worker processes) memory-map."""
         k = (x, y)
         if k in self._mem:
             return self._mem[k]
+        npy = self.cache / f"{x}_{y}.npy"
+        if npy.exists():
+            try:
+                self._mem[k] = np.load(npy, mmap_mode="r")
+                return self._mem[k]
+            except (OSError, ValueError):                     # a damaged decoded tile: decode it again
+                npy.unlink(missing_ok=True)
         self._download(x, y)
         try:
             img = np.asarray(Image.open(self._path(x, y)).convert("RGB"), dtype=np.float64)
@@ -56,7 +67,10 @@ class Terrain:
             self._path(x, y).unlink(missing_ok=True)
             self._download(x, y)
             img = np.asarray(Image.open(self._path(x, y)).convert("RGB"), dtype=np.float64)
-        elev = img[..., 0] * 256 + img[..., 1] + img[..., 2] / 256 - 32768
+        elev = (img[..., 0] * 256 + img[..., 1] + img[..., 2] / 256 - 32768).astype(np.float32)
+        tmp = npy.with_name(f"{npy.stem}.{os.getpid()}.tmp.npy")
+        np.save(tmp, elev)
+        os.replace(tmp, npy)
         self._mem[k] = elev
         return elev
 
