@@ -8,6 +8,7 @@ import pytest
 from dopplertrack import audio, doppler, tracks, search
 from dopplertrack.adsb import Trace
 from dopplertrack.geo import enu_to_lla, haversine_m
+from dopplertrack.store import TrackStore
 from dopplertrack.tracks import EventFit
 
 C = 340.0
@@ -45,21 +46,17 @@ GATES = dict(v1=(EV1.v * 0.65, EV1.v * 1.35), d1=(EV1.d * 0.4, EV1.d * 2.5), v2=
 
 
 def _index(extra=()):
-    return search.DayIndex.build(_flights(extra), LAT0, LON0)
+    return TrackStore.build(_flights(extra), LAT0, LON0)
 
 
 def _seg(idx, icao):
-    return [i for i, s in enumerate(idx.segs) if s.icao == icao][0]
+    return int(np.flatnonzero(idx.icao == icao)[0])
 
 
-def test_index_roundtrip(tmp_path):
-    idx = _index()
-    assert len(idx) == 4 and np.all(np.diff(idx.sb) >= 0)
-    assert np.allclose(idx.spos, idx.enu[idx.off[idx.ss] + idx.sj])
-    idx.save(tmp_path / "day.npz")
-    back = search.DayIndex.load(tmp_path / "day.npz")
-    assert back.fingerprint() == idx.fingerprint() and np.allclose(back.spos, idx.spos)
-    assert [s.icao for s in back.segs] == [s.icao for s in idx.segs]
+def _truth(icao, extra=()):
+    """The 1 Hz trajectory a synthetic flight really flew (what the audio is made from)."""
+    tr = [f for f in _flights(extra) if f.icao == icao][0]
+    return tr.enu(tr.segments()[0], LAT0, LON0)
 
 
 def test_pair_join_keeps_true_pair_and_drops_wrong_lag():
@@ -71,7 +68,7 @@ def test_pair_join_keeps_true_pair_and_drops_wrong_lag():
     assert (_seg(idx, "ccc001"), _seg(idx, "aaa002")) not in got        # 60 km away
     a, b = _seg(idx, "aaa001"), _seg(idx, "aaa002")
     row = pairs[(pairs.seg1 == a) & (pairs.seg2 == b)].iloc[0]
-    assert row.b_min * idx.bucket_s <= T0 + 300 <= (row.b_max + 1) * idx.bucket_s
+    assert idx.bucket_start(row.b_min) <= T0 + 300 <= idx.bucket_start(row.b_max + 1)
 
 
 def _params(**kw):
@@ -103,14 +100,40 @@ def test_silence_filter_removes_the_observer_when_a_third_flight_passes():
     assert len(quiet) == 0 or haversine_m(quiet.lat, quiet.lon, LAT0, LON0).min() > 3000.0
 
 
+def test_shortlist_takes_the_best_points_of_the_best_pairs():
+    import pandas as pd
+    cands = pd.DataFrame({"seg1": [0, 0, 0, 1, 1, 2], "seg2": [5, 5, 5, 6, 6, 7]})
+    score = np.array([1.0, 3.0, 2.0, 9.0, 8.0, 0.5])
+    assert sorted(search.shortlist(cands, score, top_pairs=2, top_points=2)) == [1, 2, 3, 4]
+    assert sorted(search.shortlist(cands, score, top_pairs=1, top_points=5)) == [3, 4]
+
+
+def test_refinement_lattice_is_gated_like_the_lens():
+    idx = _index()
+    pairs = search.pair_join(idx, EV2.t_cpa - EV1.t_cpa, c=C, **GATES)
+    p = _params(silence_d_m=None)
+    cands = search.lens_candidates(idx, pairs, p, workers=1)
+    res = cands.assign(score=-haversine_m(cands.lat, cands.lon, LAT0, LON0))       # the point nearest the truth "wins"
+    fine = search.refine_candidates(idx, res, p, top_pairs=1)
+    d = haversine_m(fine.lat, fine.lon, LAT0, LON0)
+    assert len(fine) > 100 and d.max() < 600.0 and d.min() < 30.0
+    assert (fine.d1.between(*p.d1) & fine.d2.between(*p.d2) & fine.v1.between(*p.v1) & fine.v2.between(*p.v2)).all()
+    assert ((fine.t_heard2 - fine.t_heard1 - p.dt_heard).abs() <= p.tol_s).all()
+    # a third flight heard between the events silences the refinement lattice too
+    breaker = _straight("ddd001", 800, (0, 2000, 1000), (100, 0, 0))
+    idx3 = _index([breaker])
+    quiet = search.refine_candidates(idx3, res, _params(silence_d_m=6000.0), top_pairs=1)
+    assert len(quiet) == 0
+
+
 def test_search_ranks_the_observer_first_on_synthetic_audio(tmp_path):
     idx = _index()
     sr, dur = 4000, 1800
     tt = np.arange(0, dur, 1 / sr)
     x = 0.4 * np.random.default_rng(1).standard_normal(len(tt)).astype(np.float32)
     for icao, f0 in (("aaa001", 120.0), ("aaa002", 130.0)):
-        seg = idx.segs[_seg(idx, icao)]
-        to, ratio, _ = doppler.curve_from_trajectory(seg.t, seg.enu, np.zeros(3), f0=1.0, c=C)
+        t, enu = _truth(icao)
+        to, ratio, _ = doppler.curve_from_trajectory(t, enu, np.zeros(3), f0=1.0, c=C)
         finst = np.interp(tt + T0, to, ratio, left=np.nan, right=np.nan) * f0
         m = np.isfinite(finst)
         ph = 2 * np.pi * np.cumsum(np.nan_to_num(finst, nan=0.0)) / sr
@@ -121,11 +144,21 @@ def test_search_ranks_the_observer_first_on_synthetic_audio(tmp_path):
     cache = tmp_path / "cands.npz"
     res = search.run_search(sp, ev1, ev2, idx, c=C, workers=1, cand_cache=str(cache), log=lambda m: None)
     assert len(res) > 0 and cache.exists()
+    stats = res.attrs["stats"]
+    assert "tables" in stats["times"] and stats["rows_exact"] == 20 and stats["rows_refine"] > 100
     best = res.iloc[0]
-    assert best.icao1 == "aaa001" and best.icao2 == "aaa002"
-    assert haversine_m(best.lat, best.lon, LAT0, LON0) < 400.0
-    again = search.run_search(sp, ev1, ev2, idx, c=C, workers=1, cand_cache=str(cache), log=lambda m: None)
-    assert len(again) == len(res)
+    assert best.icao1 == "aaa001" and best.icao2 == "aaa002" and best.stage == "refine"
+    assert haversine_m(best.lat, best.lon, LAT0, LON0) < 60.0
+    # every candidate scored exactly, no refinement (what dopplertrack 0.3 did), from the cache:
+    # the same pair wins, but on the 200 m lattice, so further from the observer and lower
+    logs = []
+    every = search.run_search(sp, ev1, ev2, idx, c=C, workers=1, cand_cache=str(cache), exact_points=10**6,
+                              refine_pairs=0, log=logs.append)
+    assert any(m.startswith("loaded") for m in logs) and "tables" not in every.attrs["stats"]["times"]
+    assert len(every) == stats["candidates"] and set(every.stage) == {"exact"}
+    assert (every.icao1[0], every.icao2[0]) == ("aaa001", "aaa002")
+    assert best.score >= every.score[0]
+    assert haversine_m(best.lat, best.lon, LAT0, LON0) <= haversine_m(every.lat[0], every.lon[0], LAT0, LON0)
 
 
 def test_extra_flyover_rescoring_keeps_the_observer_first_and_picks_the_right_flight():
@@ -135,8 +168,8 @@ def test_extra_flyover_rescoring_keeps_the_observer_first_and_picks_the_right_fl
     tt = np.arange(0, dur, 1 / sr)
     x = 0.4 * np.random.default_rng(1).standard_normal(len(tt)).astype(np.float32)
     for icao, f0 in (("aaa001", 120.0), ("aaa002", 130.0), ("eee001", 150.0)):
-        seg = idx.segs[_seg(idx, icao)]
-        to, ratio, _ = doppler.curve_from_trajectory(seg.t, seg.enu, np.zeros(3), f0=1.0, c=C)
+        t, enu = _truth(icao, [third])
+        to, ratio, _ = doppler.curve_from_trajectory(t, enu, np.zeros(3), f0=1.0, c=C)
         finst = np.interp(tt + T0, to, ratio, left=np.nan, right=np.nan) * f0
         m = np.isfinite(finst)
         ph = 2 * np.pi * np.cumsum(np.nan_to_num(finst, nan=0.0)) / sr
@@ -150,7 +183,7 @@ def test_extra_flyover_rescoring_keeps_the_observer_first_and_picks_the_right_fl
     assert set(out.columns) >= {"score12", "s3", "x_icao1"}
     best = out.iloc[0]
     assert best.icao1 == "aaa001" and best.icao2 == "aaa002" and best.x_icao1 == "eee001"
-    assert haversine_m(best.lat, best.lon, LAT0, LON0) < 400.0
+    assert haversine_m(best.lat, best.lon, LAT0, LON0) < 100.0
     assert best.s3 > 0.5 * best.s1
     assert np.isclose(best.score, best.score12 + best.s3)
 
@@ -160,8 +193,8 @@ def _audio(idx, flights):
     tt = np.arange(0, dur, 1 / sr)
     x = 0.4 * np.random.default_rng(1).standard_normal(len(tt)).astype(np.float32)
     for icao, f0 in flights:
-        seg = idx.segs[_seg(idx, icao)]
-        to, ratio, _ = doppler.curve_from_trajectory(seg.t, seg.enu, np.zeros(3), f0=1.0, c=C)
+        t, enu = _truth(icao)
+        to, ratio, _ = doppler.curve_from_trajectory(t, enu, np.zeros(3), f0=1.0, c=C)
         finst = np.interp(tt + T0, to, ratio, left=np.nan, right=np.nan) * f0
         m = np.isfinite(finst)
         ph = 2 * np.pi * np.cumsum(np.nan_to_num(finst, nan=0.0)) / sr

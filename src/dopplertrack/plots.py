@@ -29,15 +29,16 @@ def plot_event_fit(sp: Spectrogram, fit: EventFit, harmonics=1, pad=30, fmax=Non
     return ax
 
 
-def plot_modelled(sp: Spectrogram, fit: EventFit, seg, obs_enu, t_audio_offset, f0_scale=1.0, harmonics=1,
+def plot_modelled(sp: Spectrogram, fit: EventFit, track, obs_enu, t_audio_offset, f0_scale=1.0, harmonics=1,
                   pad=30, ax=None, c=None, label=None):
-    """Overlay the curve a candidate observer would hear from `seg`. t_audio_offset maps
-    unix time to recording time (t_audio = t_unix + offset)."""
+    """Overlay the curve a candidate observer would hear from `track` (a store.Track, e.g.
+    TrackStore.track(seg, t_a, t_b)). t_audio_offset maps unix time to recording time
+    (t_audio = t_unix + offset)."""
     c = speed_of_sound() if c is None else c
     ax = ax or plt.gca()
     w = local_whiten(sp.crop(fit.t_start - pad, fit.t_end + pad, fit.f_post * 0.7, fit.f_pre * 1.3 * harmonics))
     _show(ax, w)
-    to, ratio = modelled_curve(seg, obs_enu, c)
+    to, ratio = modelled_curve(track, obs_enu, c)
     ta = to + t_audio_offset
     for h in range(1, harmonics + 1):
         ax.plot(ta, h * fit.f0 * f0_scale * ratio, "c-", lw=0.9)

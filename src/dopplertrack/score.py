@@ -1,4 +1,9 @@
-"""Score candidate observers by modelling the exact Doppler curve they would hear."""
+"""Score candidate observers by modelling the exact Doppler curve they would hear.
+
+The scorer works on a log-frequency axis (EventWindow.comb): the window's evidence is resampled
+once onto (query time x log frequency) with every harmonic summed, so an f0 scale is an index
+offset and each (time shift, f0 scale) placement of a modelled curve is one integer gather.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -6,10 +11,14 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from .audio import Spectrogram
-from .doppler import curve_from_trajectory, speed_of_sound
-from .search import Segment
+from .doppler import speed_of_sound
+from .store import Track
 from .tracks import EventFit, local_whiten, ridge
 
+F0_SCALES = np.arange(0.95, 1.0501, 0.005)   # f0 scales every placement is swept over
+SHIFTS = np.arange(-8, 8.01, 0.5)            # event-1 time shifts, s
+DLOG = 0.001                                 # log-frequency axis step (0.1 % of frequency)
+_PAD = 64                                    # zero margin of the axis, columns (f0 scales up to 6.6 %)
 RIDGE_MIN_DB = 3.0          # ridge frames dimmer than this (whitened dB) carry no evidence
 RIDGE_MIN_UNIQUE_DB = 3.0   # ... and so do frames where another path through the window is nearly as bright
 RIDGE_EXCLUDE_BINS = 3      # half-width of the band blanked around the ridge to find that other path
@@ -37,7 +46,7 @@ class EventWindow:
     mode: str = "brightness"
     ridge_sigma: float = RIDGE_SIGMA
     ridge_data: tuple | None = field(default=None, repr=False, compare=False)   # (t, f[h], w[h])
-    _tq_cache: dict = field(default_factory=dict, repr=False, compare=False)   # n -> (tq, window sampled at tq)
+    _comb: dict = field(default_factory=dict, repr=False, compare=False)       # n -> comb(n)
 
     @classmethod
     def from_fit(cls, sp: Spectrogram, fit: EventFit, harmonics: int = 1, pad_s: float = 40.0,
@@ -72,118 +81,134 @@ class EventWindow:
                        for h in range(1, self.harmonics + 1)])
         self.ridge_data = (w.t, fs, ws)
 
-    def _sample(self, h: int, T, F):
-        """Per-sample evidence for harmonic h at (time, frequency) pairs."""
+    def comb(self, n: int = 160):
+        """(tq, C, lf0, L): the evidence of the window on n query times of the fit window and a
+        log-frequency axis lf0 + DLOG * i (i < L) of the *fundamental*, with every harmonic
+        already summed: C[k, i] = sum_h evidence_h(tq[k], h * exp(lf0 + DLOG * i)), stored
+        flattened with zero margins so that placements off the axis read zero. Built once per
+        window and n.
+
+        On a log axis an f0 scale is a constant index offset, so each (shift, f0 scale)
+        placement of a modelled curve is an integer gather from C. Brightness is the window
+        interpolated in time onto tq and along log-frequency onto the axis; in mode="ridge"
+        it is the ridge kernel evaluated at each axis frequency."""
+        if n in self._comb:
+            return self._comb[n]
+        tq = np.linspace(self.fit.t_start, self.fit.t_end, n)
+        f = self.sp.f
+        lf0 = float(np.log(f[0])); L = int(np.log(f[-1] / f[0]) / DLOG) + 1
+        lf = lf0 + DLOG * np.arange(L)
+        C = np.zeros((n, L), np.float32)
         if self.mode == "brightness":
-            return self.sp.sample(T, F)
-        ts, fs, ws = self.ridge_data
-        i = np.rint((T - ts[0]) / (ts[1] - ts[0])).astype(int)
-        inside = (i >= 0) & (i < len(ts))
-        ic = np.clip(i, 0, len(ts) - 1)
-        fr = np.interp(T, ts, fs[h - 1], left=np.nan, right=np.nan)
-        wr = np.where(inside, ws[h - 1][ic], 0.0)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            z = (F - fr) / (self.ridge_sigma * fr)
-            v = wr * np.exp(-0.5 * z * z)
-        return np.where(np.isfinite(v), v, 0.0)
+            nf = len(f)
+            Sq = self.sp.sample(np.repeat(tq, nf), np.tile(f, n)).reshape(n, nf)          # time half of the bilinear sample
+            Slog = np.stack([np.interp(lf, np.log(f), Sq[k]) for k in range(n)]).astype(np.float32)
+            for h in range(1, self.harmonics + 1):
+                o = int(round(np.log(h) / DLOG))
+                if o < L:
+                    C[:, :L - o] += Slog[:, o:]
+        else:
+            ts, fs, ws = self.ridge_data
+            fa = np.exp(lf)
+            i = np.rint((tq - ts[0]) / (ts[1] - ts[0])).astype(int)
+            inside = (i >= 0) & (i < len(ts))
+            ic = np.clip(i, 0, len(ts) - 1)
+            for h in range(1, self.harmonics + 1):
+                fr = np.interp(tq, ts, fs[h - 1] / h, left=np.nan, right=np.nan)          # the ridge, as a fundamental
+                wr = np.where(inside, ws[h - 1][ic], 0.0)
+                with np.errstate(invalid="ignore"):
+                    z = (fa[None, :] - fr[:, None]) / (self.ridge_sigma * fr[:, None])
+                    k = wr[:, None] * np.exp(-0.5 * z * z)
+                C += np.nan_to_num(k, nan=0.0).astype(np.float32)
+        # zero margins of _PAD columns each side, rows laid end to end: a placement is then a
+        # flat index (row * width + column), and anything off the axis reads a zero
+        Cp = np.zeros((n, L + 4 * _PAD), np.float32)
+        Cp[:, 2 * _PAD:2 * _PAD + L] = C
+        self._comb[n] = (tq, Cp.ravel(), lf0, L)
+        return self._comb[n]
 
     def curve_score(self, t_audio, ratio, f0_scale=1.0) -> float:
-        """Brightness under the curve averaged over the event's fit window (uncovered parts
-        count as zero); same convention as sweep_scores, for a single placement."""
+        """Score of one placement; same convention as sweep_scores."""
         return float(self.sweep_scores(t_audio, ratio, [0.0], [f0_scale])[0, 0])
 
-    def _time_sampled(self, n: int):
-        """(tq, Sq): the n query times of the fit window and the window's brightness
-        interpolated onto them, Sq (n, F) float32. The query times are the same for every
-        shift, f0 scale and harmonic (a shift moves the modelled curve, not the sample
-        times), so the time half of the bilinear sample is done once per window; what is
-        left per sample is a linear interpolation along frequency inside a ~200 KB array,
-        which keeps the sweep in cache and lets it scale across a process pool."""
-        if n not in self._tq_cache:
-            tq = np.linspace(self.fit.t_start, self.fit.t_end, n)
-            nf = len(self.sp.f)
-            Sq = self.sp.sample(np.repeat(tq, nf), np.tile(self.sp.f, n)).reshape(n, nf).astype(np.float32)
-            self._tq_cache[n] = (tq, Sq)
-        return self._tq_cache[n]
+    def sweep_scores(self, t_audio, ratio, shifts, f0_scales, n: int = 160) -> np.ndarray:
+        """Scores for every (shift, f0_scale) combination, (S, K).
 
-    def _sample_at_tq(self, h: int, F, Sq):
-        """Per-sample evidence for harmonic h at frequencies F (s, K, n) placed on the query
-        times; brightness from the time-sampled window, the ridge kernel in mode="ridge"."""
-        if self.mode != "brightness":
-            tq = self._tq_cache[Sq.shape[0]][0]
-            T = np.broadcast_to(tq[None, None, :], F.shape)
-            v = self._sample(h, T.ravel(), np.nan_to_num(F.ravel(), nan=-1.0)).reshape(F.shape)
-            return np.where(np.isfinite(F), v, 0.0)
-        nf = Sq.shape[1]
-        with np.errstate(invalid="ignore"):
-            fi = (F - self.sp.f[0]) / self.sp.df
-            ok = (fi >= 0) & (fi <= nf - 1)
-        fi = np.where(ok, fi, 0.0)
-        j0 = fi.astype(np.int64); j1 = np.minimum(j0 + 1, nf - 1)
-        wf = (fi - j0).astype(np.float32)
-        k = np.broadcast_to(np.arange(F.shape[-1])[None, None, :], F.shape)
-        v = Sq[k, j0] * (1.0 - wf) + Sq[k, j1] * wf
-        return np.where(ok, v, 0.0)
+        The modelled curve (frequency ratio f/f0 at audio times t_audio) is resampled onto n
+        query times of the fit window for each shift, placed on the log-frequency axis of
+        comb(n) at log(f0 * ratio), offset by log(f0_scale), and the evidence along it is
+        summed and divided by n: the mean over the *whole* fit window, with the parts of the
+        window the modelled curve does not cover counting as zero. A flight whose trajectory
+        only explains half the measured sweep (it took off, landed or left the data mid-pass)
+        earns half the score instead of being judged only where it happens to fit. Fewer than
+        10 covered query times scores zero. The result is divided by the number of harmonics.
 
-    def sweep_scores(self, t_audio, ratio, shifts, f0_scales, n=160, chunk=8) -> np.ndarray:
-        """Scores for every (shift, f0_scale) combination in one vectorised pass.
-        The curve is resampled onto n points of the fit window for each shift.
-
-        The score is the per-sample evidence (brightness, or the ridge kernel in mode="ridge")
-        summed along the curve divided by n, i.e. the mean over the *whole* fit window, with
-        the parts of the window the modelled curve does not cover counting as zero. A flight
-        whose trajectory only explains half the measured sweep (it took off, landed or left
-        the data mid-pass) therefore earns half the score, instead of being judged only where
-        it happens to fit.
-
-        Shifts are evaluated `chunk` at a time so the temporaries stay a few hundred KB."""
-        tq, Sq = self._time_sampled(n)
+        Placements are rounded to the axis step DLOG (0.1 % of frequency); against bilinear
+        sampling on the linear axis that changes scores by a few hundredths of a dB."""
+        tq, Cf, lf0, L = self.comb(n)
         shifts = np.asarray(shifts, float); f0_scales = np.asarray(f0_scales, float)
-        rel = tq[None, :] - shifts[:, None]                                   # (S, n) un-shifted audio time
         ok = np.isfinite(ratio)
-        rat = np.interp(rel, t_audio[ok], ratio[ok], left=np.nan, right=np.nan)  # (S, n)
-        valid = np.isfinite(rat).sum(1) >= 10                                  # (S,)
-        total = np.zeros((len(shifts), len(f0_scales)))
-        for a in range(0, len(shifts), chunk):
-            r = rat[a:a + chunk]
-            for h in range(1, self.harmonics + 1):
-                F = h * self.fit.f0 * f0_scales[None, :, None] * r[:, None, :]   # (s, K, n)
-                total[a:a + chunk] += self._sample_at_tq(h, F, Sq).sum(axis=2, dtype=np.float64) / n
+        rat = np.interp(tq[None, :] - shifts[:, None], np.asarray(t_audio)[ok], np.asarray(ratio)[ok],
+                        left=np.nan, right=np.nan)                                   # (S, n)
+        valid = np.isfinite(rat).sum(1) >= 10
+        off = np.rint(np.log(f0_scales) / DLOG).astype(np.int64)                   # (K,)
+        if np.abs(off).max(initial=0) >= _PAD:
+            raise ValueError(f"f0 scales beyond {np.exp(_PAD * DLOG):.3f} are not supported")
+        with np.errstate(invalid="ignore", divide="ignore"):
+            base = np.rint((np.log(self.fit.f0 * rat) - lf0) / DLOG)               # (S, n) axis column
+        base = np.clip(np.nan_to_num(base, nan=-_PAD, posinf=L + _PAD - 1, neginf=-_PAD), -_PAD, L + _PAD - 1)
+        flat = base.astype(np.int64) + 2 * _PAD + np.arange(n)[None, :] * (L + 4 * _PAD)
+        total = np.take(Cf, flat[:, None, :] + off[None, :, None]).sum(axis=2, dtype=np.float64) / n   # (S, K)
         total[~valid] = 0.0
         return total / self.harmonics
 
+    def emission_span(self, t0_map: float, max_shift: float = 16.0) -> tuple[float, float]:
+        """Unix emission times a modelled curve needs to cover this window under the clock
+        audio = unix + t0_map, for shifts up to max_shift: the fit window, the shifts, and up
+        to 80 s of propagation delay (27 km)."""
+        return self.fit.t_start - t0_map - max_shift - 80.0, self.fit.t_end - t0_map + max_shift + 1.0
 
-def modelled_curve(seg: Segment, obs_enu, c):
-    """(t_obs unix, ratio f/f0) the observer at obs_enu hears from this segment."""
-    t_obs, ratio, r = curve_from_trajectory(seg.t, seg.enu, obs_enu, f0=1.0, c=c)
-    return t_obs, ratio
+
+def modelled_curve(track: Track, obs_enu, c: float):
+    """(t_obs unix, ratio f/f0) the observer at obs_enu hears from a sampled track: the range
+    rate at each emission time from the track's own velocity, heard r / c later."""
+    d = track.pos - np.asarray(obs_enu, float)
+    r = np.linalg.norm(d, axis=1)
+    rr = (d * track.vel).sum(1) / np.maximum(r, 1e-6)
+    return track.t + r / c, c / (c + rr)
 
 
-def locked_score(ev1: EventWindow, ev2: EventWindow, seg1: Segment, seg2: Segment, obs_enu,
-                 t_heard1: float, c: float | None = None,
-                 shifts=np.arange(-8, 8.01, 0.5), f0_scales=np.arange(0.95, 1.0501, 0.005)):
+def locked_score(ev1: EventWindow, ev2: EventWindow, tr1: Track | None, tr2: Track | None, obs_enu,
+                 t_heard1: float, c: float | None = None, shifts=SHIFTS, f0_scales=F0_SCALES):
     """Two-event locked scoring.
 
-    Event 1's placement is swept over small time shifts and f0 scales (both are
-    measurements). Event 2 is placed with the *same* time shift, so its timing
-    relative to event 1 is fixed purely by flight geometry.
-    Returns (total, s1, s2, best_shift).
-    """
+    The recording's clock is set so that event 1's modelled heard CPA (t_heard1, unix) lands on
+    the measured one. Event 1's placement is then swept over small time shifts and f0 scales
+    (both are measurements). Event 2 is placed with the *same* time shift, so its timing
+    relative to event 1 is fixed purely by flight geometry. A track that is None (the flight
+    does not cover the window) scores zero. Returns (total, s1, s2, best_shift)."""
     c = speed_of_sound() if c is None else c
-    # map unix time -> audio time so that the modelled heard-CPA of event 1 lands on the measured one
     t0_map = ev1.fit.t_cpa - t_heard1
-    to1, r1 = modelled_curve(seg1, obs_enu, c)
-    to2, r2 = modelled_curve(seg2, obs_enu, c)
+    if tr1 is None:
+        return 0.0, 0.0, 0.0, 0.0
+    to1, r1 = modelled_curve(tr1, obs_enu, c)
     sc1 = ev1.sweep_scores(to1 + t0_map, r1, shifts, f0_scales)
     i, j = np.unravel_index(np.argmax(sc1), sc1.shape)
     s1, sh = float(sc1[i, j]), float(shifts[i])
+    if tr2 is None:
+        return s1, s1, 0.0, sh
+    to2, r2 = modelled_curve(tr2, obs_enu, c)
     s2 = float(ev2.sweep_scores(to2 + t0_map, r2, [sh], f0_scales).max())
     return s1 + s2, s1, s2, sh
 
 
-def single_score(ev: EventWindow, seg: Segment, obs_enu, t_heard: float, c=None,
-                 shifts=np.arange(-8, 8.01, 0.5), f0_scales=np.arange(0.95, 1.0501, 0.005)):
+def single_score(ev: EventWindow, tr: Track | None, obs_enu, t_heard: float, c: float | None = None,
+                 shifts=SHIFTS, f0_scales=F0_SCALES) -> tuple[float, float]:
+    """One event on the clock of its own heard CPA: (best score, its shift)."""
     c = speed_of_sound() if c is None else c
-    to, r = modelled_curve(seg, obs_enu, c)
-    t0_map = ev.fit.t_cpa - t_heard
-    return float(ev.sweep_scores(to + t0_map, r, shifts, f0_scales).max())
+    if tr is None:
+        return 0.0, 0.0
+    to, r = modelled_curve(tr, obs_enu, c)
+    sc = ev.sweep_scores(to + (ev.fit.t_cpa - t_heard), r, shifts, f0_scales)
+    i, j = np.unravel_index(np.argmax(sc), sc.shape)
+    return float(sc[i, j]), float(shifts[i])

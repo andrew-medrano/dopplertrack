@@ -2,7 +2,7 @@
 
 Set DOPPLERTRACK_OYSTER_BAY to a directory holding
   rec.npz        `dopplertrack spectrogram` of youtu.be/4CxVxuMVkMc
-  traces_ny.npz  `dopplertrack fetch 2026-09-08 ny.npz --bbox 40.4 41.3 -74.4 -72.6 --traces traces_ny.npz`
+  traces_ny.npz  `dopplertrack fetch 2026-09-08 ny_store --bbox 40.4 41.3 -74.4 -72.6 --traces traces_ny.npz`
 Both checks score the known location, as `search --point` does: the true pair must survive the
 search filters and event 2 must land on its ridge."""
 import json
@@ -14,7 +14,8 @@ import pytest
 
 from dopplertrack.adsb import load_traces
 from dopplertrack.audio import Spectrogram
-from dopplertrack.search import DayIndex, run_search
+from dopplertrack.search import run_search
+from dopplertrack.store import TrackStore
 from dopplertrack.terrain import Terrain
 from dopplertrack.tracks import detect_events, fit_event
 
@@ -29,7 +30,7 @@ pytestmark = pytest.mark.skipif(not DATA, reason="set DOPPLERTRACK_OYSTER_BAY to
 @pytest.fixture(scope="module")
 def recording():
     d = Path(DATA)
-    return Spectrogram.load(d / "rec.npz"), DayIndex.build(load_traces(d / "traces_ny.npz"))
+    return Spectrogram.load(d / "rec.npz"), TrackStore.build(load_traces(d / "traces_ny.npz"))
 
 
 def _at_truth(sp, idx, ev1, ev2):

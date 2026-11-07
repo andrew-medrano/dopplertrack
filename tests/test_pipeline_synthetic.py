@@ -7,6 +7,7 @@ import pandas as pd
 from dopplertrack import audio, doppler, pipeline, search, tracks
 from dopplertrack.adsb import Trace
 from dopplertrack.geo import enu_to_lla, haversine_m
+from dopplertrack.store import TrackStore
 
 
 def _synth_trace(icao, t, enu, lat0, lon0, gs):
@@ -28,16 +29,17 @@ def test_true_observer_ranks_first(tmp_path):
     tau = t2 - (T0 + 1220)
     enu2 = np.stack([3000.0 + 0.1 * tau**2, 95.0 * tau, np.full_like(t2, 1200.0)], -1)
     traces = [_synth_trace("aaa001", t1, enu1, lat0, lon0, 110 / 0.5144), _synth_trace("aaa002", t2, enu2, lat0, lon0, 95 / 0.5144)]
-    idx = search.DayIndex.build(traces, lat0, lon0)
-    assert [s.icao for s in idx.segs] == ["aaa001", "aaa002"]
+    idx = TrackStore.build(traces, lat0, lon0)
+    assert list(idx.icao) == ["aaa001", "aaa002"]
 
     # synthesize the audio the observer at the origin hears: f0=120 Hz and 130 Hz
     obs = np.zeros(3)
     dur = 1800
     tt = np.arange(0, dur, 1 / sr)
     x = 0.4 * np.random.default_rng(1).standard_normal(len(tt)).astype(np.float32)
-    for seg, f0 in zip(idx.segs, (120.0, 130.0)):
-        to, ratio, _ = doppler.curve_from_trajectory(seg.t, seg.enu, obs, f0=1.0, c=c)
+    for tr, f0 in zip(traces, (120.0, 130.0)):
+        t, enu = tr.enu(tr.segments()[0], lat0, lon0)
+        to, ratio, _ = doppler.curve_from_trajectory(t, enu, obs, f0=1.0, c=c)
         finst = np.interp(tt + T0, to, ratio, left=np.nan, right=np.nan) * f0
         m = np.isfinite(finst)
         ph = 2 * np.pi * np.cumsum(np.nan_to_num(finst, nan=0.0)) / sr
@@ -60,7 +62,7 @@ def test_true_observer_ranks_first(tmp_path):
     assert len(res) > 0
     best = res.iloc[0]
     assert best.icao1 == "aaa001" and best.icao2 == "aaa002"
-    assert haversine_m(best.lat, best.lon, lat0, lon0) < 600.0, f"best candidate {haversine_m(best.lat, best.lon, lat0, lon0):.0f} m from truth"
+    assert haversine_m(best.lat, best.lon, lat0, lon0) < 150.0, f"best candidate {haversine_m(best.lat, best.lon, lat0, lon0):.0f} m from truth"
 
     # refine around the winner with event 2 passed again as an "extra" event: pick_flight must
     # choose flight 2, and its locked score must equal s2 at every fine point
@@ -69,8 +71,8 @@ def test_true_observer_ranks_first(tmp_path):
     assert np.allclose(fine.s3, fine.s2) and np.allclose(fine.score, fine.s1 + fine.s2 + fine.s3)
     assert haversine_m(fine.lat[0], fine.lon[0], lat0, lon0) < 600.0
 
-    # the CLI's refine reads the CSV the search wrote and the index it ran on
-    idx.save(tmp_path / "day.npz"); res.to_csv(tmp_path / "res.csv", index=False)
+    # the CLI's refine reads the CSV the search wrote and the store it ran on
+    idx.save(tmp_path / "day"); res.to_csv(tmp_path / "res.csv", index=False)
     row = pipeline.best_per_pair(pd.read_csv(tmp_path / "res.csv")).iloc[0]
-    back = search.DayIndex.load(tmp_path / "day.npz")
+    back = TrackStore.load(tmp_path / "day")
     assert back.icao[int(row.seg1)] == row.icao1 and back.icao[int(row.seg2)] == row.icao2

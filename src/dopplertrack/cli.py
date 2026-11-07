@@ -1,4 +1,4 @@
-"""dopplertrack command line: spectrogram, detect, fit, fetch, search, refine."""
+"""dopplertrack command line: spectrogram, detect, fit, fetch, store, search, refine, verdict."""
 from __future__ import annotations
 
 import argparse
@@ -15,12 +15,15 @@ import numpy as np
 
 from . import pipeline
 from .audio import Spectrogram
-from .search import DayIndex, rescore_with_extra, run_search
+from .search import EXACT_PAIRS, EXACT_POINTS, REFINE_PAIRS, rescore_with_extra, run_search
+from .store import TrackStore
 from .terrain import Terrain
-from .verdict import verdict
 from .tracks import EventFit
+from .verdict import verdict
 
 BBOX = dict(nargs=4, type=float, metavar=("LATMIN", "LATMAX", "LONMIN", "LONMAX"))
+VERDICT_NOTE = ("note: the verdict's wrong pairs are the shortlisted pairs only (best by table score), some refined on a "
+                "50 m lattice and some not, so p is a guide, not a calibrated probability")
 SCORE = dict(choices=("brightness", "ridge"), default="brightness",
              help="brightness: brightness under the modelled curve; ridge: how closely it follows the ridge traced in the window (for faint curves)")
 
@@ -59,30 +62,36 @@ def main(argv=None):
     f.add_argument("--objective", choices=("brightness", "contrast"), default="brightness",
                    help="brightness: mean brightness under the curve (the docs/results fits); contrast: the sweep-weighted ridge contrast detect uses")
 
-    fe = sub.add_parser("fetch", help="one UTC day of adsb.lol history -> the day index a search runs on (streamed from GitHub, no disk needed)")
-    fe.add_argument("date", help="YYYY-MM-DD (UTC day)"); fe.add_argument("out", help="day index .npz")
+    fe = sub.add_parser("fetch", help="one UTC day of adsb.lol history -> the track store a search runs on (streamed from GitHub, no disk needed)")
+    fe.add_argument("date", help="YYYY-MM-DD (UTC day)"); fe.add_argument("out", help="track store directory to write")
     fe.add_argument("--bbox", **BBOX, help="keep only flights touching this box (default: the whole day, everywhere)")
     fe.add_argument("--archive", metavar="DIR", help="read an already extracted day archive instead of streaming")
     fe.add_argument("--keep-jets", action="store_true"); fe.add_argument("--pod", default="planes-readsb-prod-0")
     fe.add_argument("--origin", nargs=2, type=float, metavar=("LAT0", "LON0"), help="frame origin (default: the flights' mean position)")
     fe.add_argument("--traces", metavar="NPZ", help="also save the raw traces here")
 
-    r = sub.add_parser("search", help="rank candidate locations over a day index: pair join, lens lattices, locked scoring")
+    so = sub.add_parser("store", help="convert a 1 Hz day index (.npz from dopplertrack 0.3 fetch) into a track store")
+    so.add_argument("day", help="day index .npz"); so.add_argument("out", help="track store directory to write")
+
+    r = sub.add_parser("search", help="rank candidate locations over a track store: pair join, lens lattices, table scores, exact scores, 50 m refinement")
     r.add_argument("spec"); r.add_argument("--events", nargs="+", required=True, metavar="EV_JSON", help="two events, or one with --utc")
-    r.add_argument("--day", required=True, help="day index .npz from fetch"); r.add_argument("--out", required=True)
+    r.add_argument("--day", required=True, metavar="STORE", help="track store directory from fetch or store"); r.add_argument("--out", required=True)
     r.add_argument("--utc", help="one event only: its heard CPA time, unix seconds or ISO-8601 UTC")
-    r.add_argument("--bbox", **BBOX, help="only flights in this box (default: the whole index)")
+    r.add_argument("--bbox", **BBOX, help="only flights in this box (default: the whole store)")
     r.add_argument("--point", nargs=2, type=float, metavar=("LAT", "LON"), help="score this one known point instead of searching")
-    r.add_argument("--cands", metavar="NPZ", help="cache the candidate table here; reused when the index, gates and geometry match")
+    r.add_argument("--cands", metavar="NPZ", help="cache the candidate table here; reused when the store, gates and geometry match")
     r.add_argument("--harmonics", nargs="+", type=int, default=[1, 1], help="harmonics per event")
     r.add_argument("--tol", type=float, help="heard-gap tolerance, s (default 6; 30 with --utc)")
     r.add_argument("--v-tol", type=float, default=0.35, help="speed gate, as a fraction of each event's fitted speed")
     r.add_argument("--d-tol", nargs=2, type=float, default=(0.4, 2.5), metavar=("LO", "HI"), help="distance gate, as multiples of each event's fitted CPA distance")
     r.add_argument("--max-range", type=float, default=12000.0); r.add_argument("--spacing", type=float, default=200.0)
     r.add_argument("--coarse", type=float, default=1000.0, help="coarse sweep spacing, m")
+    r.add_argument("--exact-pairs", type=int, default=EXACT_PAIRS, help="pairs, by table score, whose candidates are scored exactly")
+    r.add_argument("--exact-points", type=int, default=EXACT_POINTS, help="candidates per such pair, by table score")
+    r.add_argument("--refine-pairs", type=int, default=REFINE_PAIRS, help="best pairs refined on a 50 m lattice (0: none)")
     r.add_argument("--no-silence", action="store_true"); r.add_argument("--no-dem", action="store_true")
     r.add_argument("--dem-zoom", type=int, default=9, help="terrain tile zoom (9: ~300 m pixels, a few hundred tiles for a continent)")
-    r.add_argument("--workers", type=int, help="process pool size (default: all cores on Linux, 1 on macOS)")
+    r.add_argument("--workers", type=int, help="process pool size (default: all cores on Linux, 1 on macOS; see README)")
     r.add_argument("--score", **SCORE); r.add_argument("--top", type=int, default=20)
     r.add_argument("--extra", nargs="*", default=[], metavar="EV_JSON", help="further events (from detect or fit): the top pairs are rescored with them locked to the same clock")
     r.add_argument("--extra-harmonics", nargs="*", type=int, default=[])
@@ -92,13 +101,16 @@ def main(argv=None):
     rf = sub.add_parser("refine", help="fine grid around one search result, optionally adding more events")
     rf.add_argument("spec"); rf.add_argument("results", help="CSV written by search")
     rf.add_argument("--events", nargs=2, required=True, metavar=("EV1_JSON", "EV2_JSON"))
-    rf.add_argument("--day", required=True, help="the day index the search used"); rf.add_argument("--out", required=True)
+    rf.add_argument("--day", required=True, metavar="STORE", help="the track store the search used"); rf.add_argument("--out", required=True)
     rf.add_argument("--rank", type=int, default=1, help="which flight pair to refine, by rank in the results (1 = best)")
     rf.add_argument("--spacing", type=float, default=50.0); rf.add_argument("--half", type=float, default=600.0, help="half-width of the fine grid, m")
     rf.add_argument("--harmonics", nargs=2, type=int, default=(1, 1))
     rf.add_argument("--extra", nargs="*", default=[], metavar="EV_JSON", help="further events (from detect or fit) to score locked to the same clock")
     rf.add_argument("--extra-harmonics", nargs="*", type=int, default=[])
     rf.add_argument("--no-dem", action="store_true"); rf.add_argument("--score", **SCORE)
+
+    v = sub.add_parser("verdict", help="judge the winner of a results CSV against the wrong pairs in it")
+    v.add_argument("results", help="CSV written by search (or its _extra CSV)")
 
     a = ap.parse_args(argv)
     if a.cmd == "spectrogram":
@@ -130,6 +142,8 @@ def main(argv=None):
     elif a.cmd == "fetch":
         pipeline.fetch(a.date, a.out, bbox=a.bbox, archive=a.archive, prop_only=not a.keep_jets, pod=a.pod,
                        origin=a.origin, traces_path=a.traces)
+    elif a.cmd == "store":
+        pipeline.convert_day_index(a.day, a.out)
     elif a.cmd == "search":
         if len(a.events) not in (1, 2) or (len(a.events) == 1) != (a.utc is not None):
             ap.error("give two events, or one event with --utc")
@@ -138,50 +152,57 @@ def main(argv=None):
         evs = [load_event(p) for p in a.events]
         ev1, ev2 = evs[0], (evs[1] if len(evs) == 2 else None)
         harm = tuple(a.harmonics) + (1,) * (2 - len(a.harmonics))
-        idx = DayIndex.load(a.day)
-        pipeline.log(f"index: {len(idx)} segments, {len(idx.t)} points, loaded in {time.time() - t0:.0f} s")
+        st = TrackStore.load(a.day)
+        pipeline.log(f"store: {len(st)} segments, {st.meta['knots']} knots, {st.meta['samples']} light-index samples; "
+                     f"store and spectrogram loaded in {time.time() - t0:.1f} s")
         elev = None if a.no_dem else Terrain(zoom=a.dem_zoom).elevation
         points = None
         if a.point:
             la, lo = np.array([a.point[0]]), np.array([a.point[1]])
             points = (la, lo, elev(la, lo) if elev else np.zeros(1))
-        res = run_search(sp, ev1, ev2, idx, harmonics=harm, tol_s=a.tol, v_tol=a.v_tol, d_tol=tuple(a.d_tol),
+        res = run_search(sp, ev1, ev2, st, harmonics=harm, tol_s=a.tol, v_tol=a.v_tol, d_tol=tuple(a.d_tol),
                          silence_d_m=None if a.no_silence else 6000.0, max_range_m=a.max_range, spacing_m=a.spacing, coarse_m=a.coarse,
                          elevation=elev, score_mode=a.score, workers=a.workers, cand_cache=a.cands, bbox=a.bbox, points=points,
-                         t_heard_unix=parse_utc(a.utc) if a.utc else None)
+                         t_heard_unix=parse_utc(a.utc) if a.utc else None, exact_pairs=a.exact_pairs,
+                         exact_points=a.exact_points, refine_pairs=a.refine_pairs)
         res.to_csv(a.out, index=False)
-        pipeline.log(f"wrote {a.out}")
+        pipeline.log(f"wrote {a.out} ({time.time() - t0:.1f} s since start)")
         print(pipeline.best_per_pair(res).head(a.top).to_string())
         print(verdict(res))
         if a.extra:
             extra = [load_event(p) for p in a.extra]
             xh = list(a.extra_harmonics) + [1] * (len(extra) - len(a.extra_harmonics))
-            res = rescore_with_extra(sp, ev1, extra, idx, res, extra_harmonics=xh, top_pairs=a.top_pairs, score_mode=a.score,
+            res = rescore_with_extra(sp, ev1, extra, st, res, extra_harmonics=xh, top_pairs=a.top_pairs, score_mode=a.score,
                                      max_range_m=a.max_range, workers=a.workers)
             out = a.out_extra or (a.out[:-4] + "_extra.csv" if a.out.endswith(".csv") else a.out + "_extra.csv")
             res.to_csv(out, index=False)
-            pipeline.log(f"wrote {out}")
+            pipeline.log(f"wrote {out} ({time.time() - t0:.1f} s since start)")
             print(pipeline.best_per_pair(res).head(a.top).to_string())
             print(verdict(res))
+        if not a.point:
+            print(VERDICT_NOTE)
     elif a.cmd == "refine":
         import pandas as pd
         sp = Spectrogram.load(a.spec)
         ev1, ev2 = (load_event(p) for p in a.events)
         extra = [load_event(p) for p in a.extra]
         xh = list(a.extra_harmonics) + [1] * (len(extra) - len(a.extra_harmonics))
-        row = pipeline.best_per_pair(pd.read_csv(a.results)).iloc[a.rank - 1]
-        idx = DayIndex.load(a.day)
-        if idx.icao[int(row.seg1)] != row.icao1 or idx.icao[int(row.seg2)] != row.icao2:
-            ap.error(f"{a.results} was not made from {a.day} (segment {row.seg1} is {idx.icao[int(row.seg1)]}, not {row.icao1})")
+        row = pipeline.best_per_pair(pd.read_csv(a.results, keep_default_na=False)).iloc[a.rank - 1]
+        st = TrackStore.load(a.day)
+        s1, s2 = int(row.seg1), int(row.seg2)
+        if not (0 <= s1 < len(st) and 0 <= s2 < len(st)) or st.icao[s1] != row.icao1 or st.icao[s2] != row.icao2:
+            ap.error(f"{a.results} was not made from {a.day} (its segments {s1}/{s2} are not {row.icao1}/{row.icao2} there)")
         elev = None if a.no_dem else Terrain().elevation
         print(f"refining rank {a.rank}: {row.icao1}/{row.icao2} at {row.lat:.5f}, {row.lon:.5f} (score {row.score:.2f})")
-        fine = pipeline.refine(sp, ev1, ev2, idx, row, spacing_m=a.spacing, half_m=a.half, harmonics=tuple(a.harmonics),
+        fine = pipeline.refine(sp, ev1, ev2, st, row, spacing_m=a.spacing, half_m=a.half, harmonics=tuple(a.harmonics),
                                elevation=elev, extra=extra, extra_harmonics=xh, score_mode=a.score)
         fine.to_csv(a.out, index=False)
         b = fine.iloc[0]
         print(f"peak score {b.score:.2f} at {b.lat:.6f}, {b.lon:.6f}" + (f"; extra flights {fine.attrs['extra_icao']}" if extra else ""))
         print(fine.head(10).to_string())
-
+    elif a.cmd == "verdict":
+        import pandas as pd
+        print(verdict(pd.read_csv(a.results, keep_default_na=False)))
 
 if __name__ == "__main__":
     main()
