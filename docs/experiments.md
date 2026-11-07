@@ -7,6 +7,13 @@ grid point against every flight); since 0.3 `search --bbox` runs the same
 test through the flight-pair join, and the commands below are written for
 the current CLI.
 
+These experiments were run upstream, with dopplertrack 0.1 to 0.3, and their
+numbers are those versions' numbers. In this fork `--day` takes a track
+store directory (from `fetch DATE DIR`, or `store DAY.npz DIR` for a 0.3
+index) and the search scores in two stages; what that changes, and the same
+recordings measured again, are in [fast-search.md](fast-search.md) and
+[heldout.md](heldout.md).
+
 ## Oyster Bay: the reference recording
 
 colsto's raw one-hour clip ([youtu.be/4CxVxuMVkMc](https://youtu.be/4CxVxuMVkMc)),
@@ -148,7 +155,7 @@ time (20:40:58 UTC) over the same 100 x 150 km box and ±30 s scores 77,280
 
 ```bash
 dopplertrack fit rec.npz --window 1375 1465 --band 70 105 --harmonics 2 --out ev_faint.json
-dopplertrack search rec.npz --events ev_faint.json --utc 1788900058.6 --day day.npz \
+dopplertrack search rec.npz --events ev_faint.json --utc 1788900058.6 --day day \
     --bbox 40.4 41.3 -74.4 -72.6 --harmonics 2 --v-tol 1.0 --d-tol 0.05 20 --out single.csv
 ```
 
