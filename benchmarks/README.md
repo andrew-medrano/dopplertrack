@@ -54,19 +54,21 @@ A day fetched with dopplertrack 0.3 (`DAY.npz`) converts with
 ## Results
 
 Scores from `run.py --score-only` for searches run with these configs on
-2026-11-06 (this package, M3 Pro, 11 workers,
-a loaded machine; times and conditions in
+2026-11-07 (this package, M3 Pro, 11 workers, load averages of 42-70 from
+other jobs; times and conditions in
 [docs/fast-search.md](../docs/fast-search.md)). The 0.3 day indexes of the
 research were converted with `dopplertrack store` instead of fetched again.
+The silence-on held-out rows were not rerun; they are from 2026-11-06, with
+0.5 s time-shift steps.
 
 | config | two events | with extras |
 |---|---|---|
-| oyster_bay | truth 1st, 26 m; located, p = 0.09 | truth 1st, 96 m; located, p = 0.05 |
-| eagle_cam | truth 13th, 0.80 km; winner 203 km off; no match | truth 1st, 0.74 km; ambiguous, p = 0.42 |
-| railcam | truth 53rd, 0.65 km; winner 691 km off; ambiguous | — |
-| mcmaster (`--no-silence`) | winner 542 km off; no match | winner 1.19 km from the rounded point (0.76 km from the unrounded one); located, p = 0.001 |
+| oyster_bay | truth 1st, 26 m; located, p = 0.06 | truth 1st, 96 m; located, p = 0.04 |
+| eagle_cam | truth 15th, 0.80 km; winner 203 km off; no match | truth 1st, 0.74 km; ambiguous, p = 0.43 |
+| railcam | truth 4th, 0.59 km; winner 691 km off; ambiguous | — |
+| mcmaster (`--no-silence`) | winner 542 km off; ambiguous | winner 1.14 km from the rounded point (0.71 km from the unrounded one); located, p = 0.0005 |
 | mcmaster, silence on | winner 284 km off; ambiguous | winner 3,492 km off; ambiguous |
-| safari_road (`--no-silence`) | winner 1,715 km off; no match | winner 3,290 km off; no match |
+| safari_road (`--no-silence`) | winner 1,715 km off; no match | winner 1,715 km off; no match |
 | safari_road, silence on | winner 2,629 km off; no match | winner 3,450 km off; no match |
 
 Distances to a rounded reference point can be off by up to about 0.7 km,

@@ -31,7 +31,7 @@ def _score(csv: Path, cfg: dict) -> dict:
     w = b.iloc[0]
     v = verdict(res)
     out = dict(pairs=len(b), winner=f"{w.icao1}/{w.icao2}", winner_km=round(float(d[0]) / 1000, 2),
-               winner_score=round(float(w.score), 2), verdict=v.verdict, p=round(float(v.p), 3),
+               winner_score=round(float(w.score), 2), verdict=v.verdict, p=float(f"{v.p:.2g}"),
                hit=bool(d[0] <= 2000))
     if len(b) > 1:
         out["margin_pct"] = round(100 * float((b.score.iloc[0] - b.score.iloc[1]) / b.score.iloc[1]), 1)

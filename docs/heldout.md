@@ -65,15 +65,22 @@ Distance from the winner to the reference point, and the verdict:
 | silence off, fast, with extras | **0.76 km, located (p = 0.001)** | 1,715 km, no match (p = 0.98) |
 
 The table above is from 2026-11-05: 0.3's search and the research prototype
-of the fast search. The package in this repository, run on 2026-11-06 with
-the same events (`benchmarks/mcmaster.json`, `benchmarks/safari_road.json`):
+of the fast search. The package in this repository, with the same events
+(`benchmarks/mcmaster.json`, `benchmarks/safari_road.json`). The silence-off
+rows are from the current code (2026-11-07: 0.25 s time-shift steps, and a
+verdict that leaves out every pair sharing a flight with the winner); the
+silence-on rows were not rerun and are from 2026-11-06, with 0.5 s steps:
 
 | run (package) | McMaster Forest | Safari Road |
 |---|---|---|
 | silence on, 2 events | 284 km, ambiguous (p = 0.49) | 2,629 km, no match (p = 0.65) |
 | silence on, with extras | 3,492 km, ambiguous (p = 0.42) | 3,450 km, no match (p = 0.86) |
-| silence off, 2 events | 542 km, no match (p = 0.53); the best pair within 800 m ranks 2nd (0.74 km) | 1,715 km, no match (p = 0.72) |
-| silence off, with extras | **0.76 km, located (p = 0.001)**, 21 % ahead | 3,290 km, no match (p = 0.63) |
+| silence off, 2 events | 543 km, ambiguous (p = 0.49); the best pair within 800 m ranks 2nd (0.74 km) | 1,715 km, no match (p = 0.56) |
+| silence off, with extras | **0.71 km, located (p = 0.0005)**, 23 % ahead | 1,715 km, no match (p = 0.84) |
+
+With 0.5 s steps the silence-off McMaster results were 542 km, no match
+(p = 0.53) for two events and 0.76 km, located (p = 0.001), 21 % ahead with
+the extras; Safari Road's with extras was 3,290 km, no match (p = 0.63).
 
 The package reproduces the prototype's held-out results: the same hit at
 McMaster with the silence filter off and the extras, and misses otherwise.

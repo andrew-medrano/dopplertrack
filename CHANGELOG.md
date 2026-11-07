@@ -84,19 +84,24 @@ once.
 - On the synthetic scene of tests/test_search.py the two-stage search puts
   the winner 2 m from the observer; scoring every 200 m candidate put it
   143 m away. On real data (0.3 indexes converted with `store`): Oyster Bay
-  ranks the true pair 1 of 500 shortlisted pairs, 26 m from the answer, 8.1 %
-  ahead, located (p = 0.09; 0.05 with its extra flyover); the eagle cam
-  ranks it 13 of 500 with two events and 1 of 200 with its three extra
-  flyovers (4.9 % ahead, ambiguous, p = 0.42). The railcam's true pair
-  ranks 53 of 499 (the prototype had it 3rd). McMaster Forest, held out, is
-  located 0.76 km from its reference point with the silence filter off and
-  its extras (p = 0.001), as in the prototype; Safari Road is missed.
+  ranks the true pair 1 of 499 shortlisted pairs, 26 m from the answer, 8.1 %
+  ahead, located (p = 0.06; 0.04 with its extra flyover); the eagle cam
+  ranks it 15 of 500 with two events and 1 of 200 with its three extra
+  flyovers (4.9 % ahead, ambiguous, p = 0.43). The railcam's true pair
+  ranks 4 of 500 (the prototype had it 3rd). McMaster Forest, held out, is
+  located 0.71 km from its reference point with the silence filter off and
+  its extras (p = 0.0005), as in the prototype; Safari Road is missed.
+  Searched back to back with the research prototype, the lens stage takes
+  1.4-1.9× as long (exact closest approaches on the curve instead of
+  chords) and the whole search 1.3-1.6×; peak memory is 1.4-2.1 GB against
+  1.9-2.8 GB, and the stores are 0.38-0.46 times the size of the prototype's
+  with its light-index cache.
 - The silence filter skips points it has already removed: on the McMaster
   day with the filter on, 1,181 s of CPU instead of 2,046 s, same result.
 - Against 0.3 on the same machine, the eagle-cam search is 5.4× faster in
   wall time (309 s to 58 s) and 5.8× in CPU time; Oyster Bay 23× and 18×,
   inflated by 0.3 swapping. The verdict is weaker: with the extras the
-  eagle cam is ambiguous (p = 0.42) where 0.3 said located (p = 0.05),
+  eagle cam is ambiguous (p = 0.43) where 0.3 said located (p = 0.05),
   because the null is the shortlist.
 
 ### Documentation and repository

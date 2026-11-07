@@ -106,7 +106,12 @@ commands are in [benchmarks/](../benchmarks/)), one search at a time, but
 **not on an idle machine**: other jobs held the load average at 19-60 when
 each search started (two other CPU-bound processes ran throughout). Wall
 times are therefore upper bounds, and CPU time (user, all processes) is the
-steadier figure. Peak memory is the main process's peak footprint.
+steadier figure. Peak memory is the main process's peak footprint. These
+runs predate the 0.25 s shift grid and the lens prefilter described under
+[Validation against the prototype](#validation-against-the-prototype-2026-11-06),
+which has runs of the current code; the held-out rows there were rerun too
+(McMaster 89 s and Safari Road 152 s with `--no-silence`, at load averages
+of 63-68, same winners).
 
 | recording | joined pairs | pairs with candidates | candidates | join | lens | tables + lookup | exact | refine | total (wall) | CPU | peak memory |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -150,7 +155,8 @@ spare, expect a ratio nearer the eagle cam's. The prototype had measured
 the full log-axis search at 418 s for Oyster Bay on a quiet machine, 7× its
 own 60 s.
 
-Accuracy of the same two runs:
+Accuracy of the same two runs (the fork with 0.5 s shift steps; the current
+numbers are in the next table; the fork's p-values moved by up to 0.32):
 
 | | upstream 0.3 | this fork |
 |---|---|---|
@@ -163,24 +169,84 @@ Same winners and the same ranks of the true pair. The fork's margins with
 extras are smaller and its verdicts weaker: its null is the 500
 shortlisted pairs, all of them good fits, where upstream's is every pair.
 
-Accuracy of the package on the development recordings (rank of the true
-pair among the best pair per flight pair; distance of its best point from
-the answer):
+Accuracy of the package on the development recordings, from the
+back-to-back runs below (rank of the true pair among the best pair per
+flight pair; distance of its best point from the answer):
 
 | | two events | with extra flyovers |
 |---|---|---|
-| Oyster Bay | 1 of 498; 26 m; 8.1 % ahead; located, p = 0.09 | 1 of 199; 96 m; 11.3 % ahead; located, p = 0.05 |
-| eagle cam | 13 of 500 (800 m); the winner is 203 km off; no match, p = 0.94 | 1 of 200; 741 m; 4.9 % ahead; ambiguous, p = 0.42 |
-| railcam | 53 of 499 (651 m); the winner is 691 km off; ambiguous, p = 0.28 | — |
+| Oyster Bay | 1 of 499; 26 m; 8.1 % ahead; located, p = 0.06 | 1 of 199; 96 m; 12.4 % ahead; located, p = 0.04 |
+| eagle cam | 15 of 500 (797 m); the winner is 203 km off; no match, p = 0.62 | 1 of 200; 741 m; 4.9 % ahead; ambiguous, p = 0.43 |
+| railcam | 4 of 500 (95 m); the winner is 692 km off; ambiguous, p = 0.31 | — |
 
-Oyster Bay and the eagle cam match the prototype closely (8.0 % and 11.2 %
-ahead on Oyster Bay, 5.0 % on the eagle cam, in the prototype). The railcam does not: the
-prototype ranked its true pair 3rd after refinement, the package ranks it
-53rd, the same as the full log-axis search. Its true pair scores 11.17
-exactly against 11.23 for the 50th pair, so it misses the refinement by a
-hair; the prototype's closest approach (nearest knot, then the adjacent
-straight chords) had put it 26th before refinement. Rankings this close are not stable to small
-modelling changes, which is the real lesson of the railcam.
+## Validation against the prototype (2026-11-06)
+
+Each recording was searched with this package and, right after, with the
+research prototype, on the same machine with the same events and 11
+workers. Stores were converted from the 0.3 indexes with `dopplertrack
+store`; the prototype used its own stores. Load averages at the start of
+each run were 7-22 (another agent's CPU-bound jobs ran throughout). The
+prototype's times leave out the second exact stage it ran and discarded
+(K = 1000, N = 50; 6.2-6.9 s).
+
+| | Oyster Bay | eagle cam | railcam (`--no-silence`) |
+|---|---|---|---|
+| package: join / lens / tables + lookup / exact / refine | 8.1 / 64.0 / 4.1 / 1.6 / 2.5 s | 4.0 / 41.9 / 4.0 / 1.8 / 1.5 s | 9.2 / 53.9 / 4.3 / 1.8 / 1.3 s |
+| package: stages / wall / CPU | 80 s / 82 s / 637 s | 53 s / 56 s / 462 s | 70 s / 73 s / 571 s |
+| prototype: join / lens / tables + lookup / exact / refine | 7.8 / 44.4 / 2.5 / 1.7 / 1.1 s | 4.2 / 24.1 / 2.7 / 1.7 / 1.1 s | 8.6 / 28.8 / 2.6 / 1.6 / 1.0 s |
+| prototype: stages (incl. load) / CPU | 60 s / 496 s | 35 s / 335 s | 45 s / 359 s |
+| peak memory footprint, package / prototype | 2.08 / 2.79 GB | 1.44 / 1.93 GB | 1.73 / 2.73 GB |
+| store on disk, package / prototype (with its light cache) | 646 MB / 1,463 MB | 201 MB / 530 MB | 577 MB / 1,252 MB |
+| true pair, package / prototype | 1st / 1st | 15th / 13th; 1st / 1st with extras | 4th / 3rd |
+
+The package's lens stage is 1.4-1.9× the prototype's. Its closest
+approaches are exact on the Hermite curve (chords, then Newton steps on
+every arc that could be nearer), where the prototype took the nearest knot
+and the two chords beside it. On the gate calls of 1,500 Oyster Bay pairs
+the exact closest approach took 3.0 s against 0.95 s for the chord step
+alone (flight 1, every exact gate call). On 3,000-pair samples run in one
+process, the package's lens used 1.4× (Oyster Bay), 1.7× (eagle cam) and 1.9× (railcam) the prototype's CPU
+time; the prototype found 0.7 % and 1.9 % more candidates on the first two
+(its silence filter, on chords, silences fewer points) and 2.3 % fewer on
+the railcam (its pre-gate). Three things were tried to close the gap:
+
+- a chord-distance prefilter before the exact coarse gate (kept: identical
+  candidates on 4,000-pair samples of each day, 7-17 % less lens CPU);
+- computing each chain's chords once (kept: 13 % on a railcam sample);
+- judging the coarse gate on the chords, or on bounds from the chords, with
+  the curve only where two chords contend (dropped: the first lost 0.02 %
+  of the candidates, the second let 60 % more fine points through and was
+  no faster).
+
+The runs in the table are from the commit before the first two of these.
+The same six runs repeated with the final code, at load averages of 42-70,
+gave identical ranks, scores and verdicts, with lens ratios of 1.5-2.2 and
+CPU ratios of 1.2-1.6; their wall times were 1.5-1.6 times those above.
+
+**The railcam rank.** With 0.5 s time-shift steps the package ranked the
+railcam's true pair 53rd, the prototype 3rd. At the same lattice point the
+package scored it 11.17 and the prototype 11.47. The difference was the
+heard CPA time: the package's exact closest approach put it 0.10 s later
+than the prototype's chords. Event 1's best shift then moved from 0.5 s to
+1.0 s, and event 2, which takes event 1's shift, lost 0.24 of its score.
+That left the pair 53rd after the exact stage, below the 50 that get
+refined, where the prototype had it 26th. With 0.25 s steps (now the
+default) it is 33rd after the exact stage and 4th after refinement. Rescoring
+the package's shortlist offline, choosing the shift by the sum of both
+events instead also helped (37th), but changes the method; it was not
+adopted. The finer grid costs about 2 s per search (tables and exact
+scores) and moved the eagle cam's two-event rank from 13th to 15th.
+
+**Store size including caches.** A store holds everything a search reads
+from the ADS-B day; there is no other cache. Terrain is separate: decoded
+zoom-9 tiles are kept under `~/.cache/dopplertrack/terrarium/9` (PNG plus a
+float32 `.npy` per tile) and shared by every day; after all the searches on
+this page it held 6,801 tiles, 2.35 GB (1.81 GB of it `.npy`). `refine`
+uses zoom-12 tiles in their own cache.
+
+**Store conversion** (`dopplertrack store`, 2026-11-06, load 9-22): Oyster Bay
+62 s, eagle cam 20 s, railcam 54 s, with peak memory footprints of 2.77, 1.25
+and 2.57 GB.
 
 ## Prototype measurements (2026-11-05)
 
@@ -252,6 +318,6 @@ These were tried in the prototype and dropped. Numbers from 2026-11-05.
   some not. Its p-values are not calibrated for the two-stage search; the CLI
   prints a note saying so.
 - The lens stage (join, lattices, closest approaches, gates, silence filter)
-  is now 80-90 % of the time. Most joined pairs produce no candidates (9,448
+  is now 77-92 % of the time. Most joined pairs produce no candidates (9,448
   of 60,802 on the Oyster Bay day do). Rejecting those earlier is the next
   speed step.

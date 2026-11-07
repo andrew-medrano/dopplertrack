@@ -37,16 +37,18 @@ Read [Responsible use](#responsible-use) before using it.
 | role | development | development | development | held out | held out |
 | recording | 1 h, 2026-09-08 | 12 h, 2024-12-28 | 11.9 h, 2026-05-28 | 12 h, 2026-05-27 | 7 h, 2023-07-09 |
 | propeller flights that day (24-50° N, 66-125° W) | 35,427 | 13,046 | 29,420 | 25,892 | 15,613 |
-| rank of the true pair, two events | **1** of 498 | 13 of 500 | 53 of 499 | 2 of 500 ¹ | not found |
+| rank of the true pair, two events | **1** of 499 | 15 of 500 | 4 of 500 | 2 of 500 ¹ | not found |
 | rank with extra flyovers | 1 | **1** of 200 | — | **1** of 200 ¹ | not found |
-| best point from the answer | 26 m | 741 m | 651 m | 0.76 km ² | winner 1,715 km off |
-| verdict (p) | located (0.09; 0.05 with the extra) | ambiguous (0.42) with extras | ambiguous (0.28), wrong pair | located (0.001) with extras ¹ | no match |
-| search time, M3 Pro, 11 workers ³ | 86 s | 54 s | 75 s | 59 s ¹ | 113 s ¹ |
+| best point from the answer | 26 m | 741 m | 95 m | 0.71 km ² | winner 1,715 km off |
+| verdict (p) | located (0.06; 0.04 with the extra) | ambiguous (0.43) with extras | ambiguous (0.31), wrong pair | located (0.0005) with extras ¹ | no match |
+| search time, M3 Pro, 11 workers ³ | 82 s | 56 s | 73 s | 89 s ¹ | 152 s ¹ |
 
 ¹ With the silence filter off (`--no-silence`), a setting chosen after the
 pre-registered run, with the filter on, missed. See [docs/heldout.md](docs/heldout.md).
 ² From a reference point in the preserve; the recorder's position is not known.
-³ After the track store exists; on a loaded machine, so upper bounds. Details
+³ Wall time after the track store exists, on a machine other jobs kept
+busy (load average 7-16 at the start of the three development searches,
+63-68 at the start of the two held-out ones), so upper bounds. Details
 under [Performance](#performance).
 
 The railcam is a negative result upstream already reported: the true pair
@@ -114,7 +116,8 @@ uv run dopplertrack verdict results_extra.csv
 `search` prints the time of each stage, the best pair per flight pair and
 the verdict. On this recording the winner is the PC-12 and King Air 350 pair
 from the video, its best point 26 m from the answer, 8.1 % ahead of the runner-up; the
-verdict is "located" (p = 0.09, and 0.05 with the extra flyover).
+verdict is "located" (p = 0.06, and 0.04 with the extra flyover). `refine`
+puts the peak with the extra flyover 96 m from the answer.
 `results.csv` holds every scored candidate; `results_extra.csv` the best
 pairs rescored with the extra flyover.
 
@@ -257,11 +260,37 @@ and shared the machine with the test suite for 7 of its 34 minutes, so its
 ratio overstates what a machine with spare RAM would see; the eagle cam's
 5-6× is the fairer figure. Both searches found the same winners.
 
-The five recordings took 54-113 s each with the default settings or with
-the silence filter off, and 159-267 s with the filter on for the two
-held-out recordings, whose events are 47 minutes and 5.3 hours apart. The
-lens stage (lattices, exact closest approaches, gates, silence filter) is
-now 80-96 % of the time; the scoring that dominated upstream takes 4-7 s.
+The five recordings took 56-152 s each with the default settings or with
+the silence filter off. With the filter on, the two held-out recordings,
+whose events are 47 minutes and 5.3 hours apart, took 159-267 s (measured
+before the 0.25 s shift grid, which adds about 2 s). The lens stage
+(lattices, exact closest approaches, gates, silence filter) is 77-92 % of
+the time; the scoring that dominated upstream takes 7-10 s.
+
+**Against the research prototype, back to back.** The prototype that came
+before this port scored with chords instead of the curve (nearest knot,
+then the two chords beside it) and dropped valid candidates in its
+pre-gate. Each pair of runs below was started one right after the other,
+same machine, same events, 11 workers, at load averages of 7-22:
+
+| | prototype | this fork | fork / prototype |
+|---|---|---|---|
+| Oyster Bay: search stages / lens / CPU time | 60 s / 44 s / 496 s | 80 s / 64 s / 637 s | 1.34 / 1.44 / 1.28 |
+| eagle cam: search stages / lens / CPU time | 35 s / 24 s / 335 s | 53 s / 42 s / 462 s | 1.52 / 1.74 / 1.38 |
+| railcam: search stages / lens / CPU time | 45 s / 29 s / 359 s | 70 s / 54 s / 571 s | 1.58 / 1.87 / 1.59 |
+| peak memory, main process | 1.9-2.8 GB | 1.4-2.1 GB | |
+| store on disk, light index included | 1.25-1.46 GB (0.53 GB eagle cam) | 0.58-0.65 GB (0.20 GB eagle cam) | 0.38-0.46 |
+
+The prototype's times leave out a second exact stage it ran and threw away
+(6-7 s). The fork's lens is 1.4-1.9× slower: its closest approaches are
+exact on the curve, which costs about three times the chord step. These
+fork runs are from the commit before the last lens change (a chord-distance
+prefilter, same candidates, 7-17 % less lens CPU on 4,000-pair samples). A
+second pairing with the final code, at load averages of 42-70, gave
+1.5-2.2× for the lens and 1.2-1.6× for CPU time, the same results, and
+wall times 1.5-1.6 times those above. The fork's ranks are within two places
+of the prototype's (table under Status; the prototype had the eagle cam's
+true pair 13th and the railcam's 3rd).
 
 **Earlier figures.** A research write-up before this port gave "10-26×
 faster". That compared the prototype with upstream's scorer timed on a
@@ -276,10 +305,13 @@ per-day p-values are not corrected for 365 searches.
 **What the speed costs.** Only about 1 % of candidates are scored exactly,
 and the verdict's null is the shortlist. On the eagle cam with its extras,
 upstream finds the same winner with a 13.5 % margin and "located"
-(p = 0.05); this fork gives 4.9 % and "ambiguous" (p = 0.42). On the railcam
-the true pair misses the refinement by 0.06 points and ranks 53rd. On Oyster
-Bay with its extra flyover, upstream leads by 24.3 % (p = 0.0001) and this
-fork by 11.3 % (p = 0.05).
+(p = 0.05); this fork gives 4.9 % and "ambiguous" (p = 0.43). On Oyster Bay
+with its extra flyover, upstream leads by 24.3 % (p = 0.0001) and this fork
+by 12.4 % (p = 0.04). Only the best 50 pairs are refined, so a true pair
+just below that line can lose to its own sharp peak: on the railcam, with
+0.5 s time-shift steps, the true pair ranked 53rd after the exact stage
+and stayed 53rd; with the 0.25 s steps now used it is 33rd, gets refined,
+and ranks 4th.
 
 ## Differences from the method in the video
 
