@@ -1,0 +1,68 @@
+{
+ "name": "oyster_bay",
+ "utc_date": "2026-09-08",
+ "audio": {
+  "url": "https://youtu.be/4CxVxuMVkMc",
+  "note": "colsto's raw one-hour clip, from its first sample"
+ },
+ "spectrogram": "dopplertrack spectrogram AUDIO rec.npz (defaults)",
+ "harmonics": [
+  2,
+  1
+ ],
+ "events": [
+  {
+   "t_cpa": 2155.959,
+   "t_cpa_emit": 2137.052,
+   "f0": 112.622,
+   "v": 139.895,
+   "d": 6433.498,
+   "t_start": 2090.0,
+   "t_end": 2200.0,
+   "score": 16.468,
+   "f_pre": 191.249,
+   "f_post": 79.81
+  },
+  {
+   "t_cpa": 3073.937,
+   "t_cpa_emit": 3056.538,
+   "f0": 132.405,
+   "v": 141.2,
+   "d": 5920.419,
+   "t_start": 3020.0,
+   "t_end": 3130.0,
+   "score": 11.098,
+   "f_pre": 226.317,
+   "f_post": 93.575
+  }
+ ],
+ "extra": [
+  {
+   "t_cpa": 1408.769,
+   "t_cpa_emit": 1406.574,
+   "f0": 80.771,
+   "v": 40.86,
+   "d": 746.81,
+   "t_start": 1375.0,
+   "t_end": 1465.0,
+   "score": 5.607,
+   "f_pre": 91.793,
+   "f_post": 72.112
+  }
+ ],
+ "extra_harmonics": [
+  2
+ ],
+ "search_args": [],
+ "truth_pair": [
+  "a1dfeb",
+  "ace391"
+ ],
+ "truth_note": "a Pilatus PC-12 and a King Air 350, as in docs/experiments.md",
+ "reference": {
+  "lat": 40.876466,
+  "lon": -73.524951,
+  "radius_m": 800,
+  "source": "the answer given in colsto's video, as in docs/experiments.md"
+ }
+}

@@ -1,0 +1,90 @@
+{
+ "name": "eagle_cam",
+ "utc_date": "2024-12-28",
+ "audio": {
+  "url": "https://youtu.be/zs2o5Rhlp5w",
+  "note": "the 12-hour archive of the Southwest Florida Eagle Cam, from its first sample"
+ },
+ "spectrogram": "dopplertrack spectrogram AUDIO rec.npz (defaults)",
+ "harmonics": [
+  1,
+  1
+ ],
+ "events": [
+  {
+   "t_cpa": 20247.487,
+   "t_cpa_emit": 20240.763,
+   "f0": 108.135,
+   "v": 98.964,
+   "d": 2287.721,
+   "t_start": 20117.024,
+   "t_end": 20357.024,
+   "score": 4.932,
+   "f_pre": 152.483,
+   "f_post": 83.772
+  },
+  {
+   "t_cpa": 20585.334,
+   "t_cpa_emit": 20576.326,
+   "f0": 133.151,
+   "v": 79.228,
+   "d": 3065.05,
+   "t_start": 20457.024,
+   "t_end": 20697.024,
+   "score": 3.682,
+   "f_pre": 173.562,
+   "f_post": 108.003
+  }
+ ],
+ "extra": [
+  {
+   "t_cpa": 18820.078,
+   "t_cpa_emit": 18815.537,
+   "f0": 114.093,
+   "v": 63.576,
+   "d": 1545.207,
+   "t_start": 18697.024,
+   "t_end": 18937.024,
+   "score": 6.894,
+   "f_pre": 140.308,
+   "f_post": 96.132
+  },
+  {
+   "t_cpa": 33697.166,
+   "t_cpa_emit": 33692.174,
+   "f0": 121.418,
+   "v": 55.902,
+   "d": 1698.695,
+   "t_start": 33575.024,
+   "t_end": 33815.024,
+   "score": 6.719,
+   "f_pre": 145.286,
+   "f_post": 104.285
+  },
+  {
+   "t_cpa": 1521.521,
+   "t_cpa_emit": 1516.728,
+   "f0": 175.179,
+   "v": 72.777,
+   "d": 1631.074,
+   "t_start": 1393.024,
+   "t_end": 1633.024,
+   "score": 3.775,
+   "f_pre": 222.839,
+   "f_post": 144.313
+  }
+ ],
+ "extra_harmonics": [],
+ "search_args": [],
+ "truth_pair": [
+  "a2baea",
+  "a336e4"
+ ],
+ "truth_note": "a Beech Baron and a Pilatus PC-12",
+ "reference": {
+  "lat": 26.702359,
+  "lon": -81.847766,
+  "radius_m": 800,
+  "source": "nest LE-026B in Lee County eagle-nest register, as in docs/experiments.md"
+ }
+}

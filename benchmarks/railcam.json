@@ -1,0 +1,55 @@
+{
+ "name": "railcam",
+ "utc_date": "2026-05-28",
+ "audio": {
+  "url": "https://www.youtube.com/watch?v=OH5baHg7pIw",
+  "note": "Railstream's Howell Wye camera, Atlanta, 11.9 h from 2026-05-28 00:42 UTC, from its first sample"
+ },
+ "spectrogram": "dopplertrack spectrogram AUDIO rec.npz (defaults)",
+ "harmonics": [
+  1,
+  1
+ ],
+ "events": [
+  {
+   "t_cpa": 30627.338,
+   "t_cpa_emit": 30623.009,
+   "f0": 189.125,
+   "v": 75.371,
+   "d": 1472.98,
+   "t_start": 30504.024,
+   "t_end": 30744.024,
+   "score": 9.964,
+   "f_pre": 242.935,
+   "f_post": 154.83
+  },
+  {
+   "t_cpa": 42601.382,
+   "t_cpa_emit": 42597.534,
+   "f0": 130.376,
+   "v": 85.952,
+   "d": 1309.317,
+   "t_start": 42477.274,
+   "t_end": 42717.274,
+   "score": 9.348,
+   "f_pre": 174.438,
+   "f_post": 104.084
+  }
+ ],
+ "extra": [],
+ "extra_harmonics": [],
+ "search_args": [
+  "--no-silence"
+ ],
+ "truth_pair": [
+  "a07f4d",
+  "ab92a2"
+ ],
+ "truth_note": "two Cirrus SR22s; events from detect on 1000 s crops",
+ "reference": {
+  "lat": 33.78,
+  "lon": -84.42,
+  "radius_m": 800,
+  "source": "a public railway junction (BI Tower), rounded to 0.01 deg"
+ }
+}

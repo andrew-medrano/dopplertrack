@@ -1,0 +1,89 @@
+{
+ "name": "safari_road",
+ "utc_date": "2023-07-09",
+ "audio": {
+  "url": "https://archive.org/details/HNCAM01820230708",
+  "note": "Hamilton Naturalists' Club AudioMoth HNCAM018; 30-min files from 060100 to 13:02 local EDT placed at their filename start times, silence in gaps. No licence stated in the item metadata."
+ },
+ "spectrogram": "dopplertrack spectrogram AUDIO rec.npz (defaults)",
+ "harmonics": [
+  1,
+  1
+ ],
+ "events": [
+  {
+   "t_cpa": 17696.061,
+   "t_cpa_emit": 17679.471,
+   "f0": 82.979,
+   "v": 42.829,
+   "d": 5645.054,
+   "t_start": 17721.024,
+   "t_end": 17961.024,
+   "score": 8.026,
+   "f_pre": 94.927,
+   "f_post": 73.702
+  },
+  {
+   "t_cpa": 20499.43,
+   "t_cpa_emit": 20496.133,
+   "f0": 77.583,
+   "v": 35.003,
+   "d": 1121.843,
+   "t_start": 20369.024,
+   "t_end": 20609.024,
+   "score": 6.135,
+   "f_pre": 86.479,
+   "f_post": 70.347
+  }
+ ],
+ "extra": [
+  {
+   "t_cpa": 25116.925,
+   "t_cpa_emit": 25115.276,
+   "f0": 75.035,
+   "v": 49.983,
+   "d": 561.185,
+   "t_start": 24995.024,
+   "t_end": 25235.024,
+   "score": 5.981,
+   "f_pre": 87.955,
+   "f_post": 65.425
+  },
+  {
+   "t_cpa": 1723.5,
+   "t_cpa_emit": 1722.422,
+   "f0": 104.729,
+   "v": 58.707,
+   "d": 366.981,
+   "t_start": 1611.024,
+   "t_end": 1851.024,
+   "score": 5.612,
+   "f_pre": 126.565,
+   "f_post": 89.319
+  },
+  {
+   "t_cpa": 2130.449,
+   "t_cpa_emit": 2129.175,
+   "f0": 76.307,
+   "v": 79.673,
+   "d": 433.314,
+   "t_start": 1981.024,
+   "t_end": 2221.024,
+   "score": 5.252,
+   "f_pre": 99.636,
+   "f_post": 61.83
+  }
+ ],
+ "extra_harmonics": [],
+ "search_args": [
+  "--no-silence"
+ ],
+ "truth_pair": null,
+ "truth_note": "held out; see docs/heldout.md. Missed in every variant.",
+ "reference": {
+  "lat": 43.35,
+  "lon": -80.12,
+  "radius_m": 800,
+  "source": "a trail site on Safari Road, Flamborough, Ontario, rounded to 0.01 deg"
+ }
+}

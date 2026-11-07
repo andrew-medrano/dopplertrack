@@ -1,0 +1,89 @@
+{
+ "name": "mcmaster",
+ "utc_date": "2026-05-27",
+ "audio": {
+  "url": "https://archive.org/details/HNCSW720260527",
+  "note": "Hamilton Naturalists' Club recorder HNCSW7; hourly files 080012 to 190022 placed at their filename start times (local EDT), silence in gaps, 12:00:12 UTC = t 0. No licence stated in the item metadata."
+ },
+ "spectrogram": "dopplertrack spectrogram AUDIO rec.npz (defaults)",
+ "harmonics": [
+  1,
+  1
+ ],
+ "events": [
+  {
+   "t_cpa": 12866.176,
+   "t_cpa_emit": 12859.482,
+   "f0": 237.815,
+   "v": 75.432,
+   "d": 2277.643,
+   "t_start": 12741.024,
+   "t_end": 12981.024,
+   "score": 13.627,
+   "f_pre": 305.548,
+   "f_post": 194.662
+  },
+  {
+   "t_cpa": 32032.235,
+   "t_cpa_emit": 32021.054,
+   "f0": 144.877,
+   "v": 110.717,
+   "d": 3804.8,
+   "t_start": 31901.024,
+   "t_end": 32141.024,
+   "score": 17.172,
+   "f_pre": 214.751,
+   "f_post": 109.31
+  }
+ ],
+ "extra": [
+  {
+   "t_cpa": 29391.306,
+   "t_cpa_emit": 29383.805,
+   "f0": 230.234,
+   "v": 84.514,
+   "d": 2552.58,
+   "t_start": 29263.024,
+   "t_end": 29503.024,
+   "score": 13.248,
+   "f_pre": 306.313,
+   "f_post": 184.428
+  },
+  {
+   "t_cpa": 9289.809,
+   "t_cpa_emit": 9287.892,
+   "f0": 156.282,
+   "v": 41.188,
+   "d": 652.034,
+   "t_start": 9169.024,
+   "t_end": 9409.024,
+   "score": 13.171,
+   "f_pre": 177.804,
+   "f_post": 139.408
+  },
+  {
+   "t_cpa": 30623.991,
+   "t_cpa_emit": 30619.816,
+   "f0": 147.446,
+   "v": 68.947,
+   "d": 1420.601,
+   "t_start": 30501.024,
+   "t_end": 30741.024,
+   "score": 12.655,
+   "f_pre": 184.913,
+   "f_post": 122.603
+  }
+ ],
+ "extra_harmonics": [],
+ "search_args": [
+  "--no-silence"
+ ],
+ "truth_pair": null,
+ "truth_note": "held out; see docs/heldout.md. The pre-registered run had the silence filter on (drop --no-silence) and missed.",
+ "reference": {
+  "lat": 43.24,
+  "lon": -79.95,
+  "radius_m": 800,
+  "source": "McMaster Forest Nature Preserve (public), rounded to 0.01 deg; recorder position within it unknown"
+ }
+}
